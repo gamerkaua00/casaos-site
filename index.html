@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https: http://localhost:* http://127.0.0.1:* blob: data:; media-src 'self' https: http://localhost:* http://127.0.0.1:* blob:; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; object-src 'none'; base-uri 'none'">
+  <meta name="theme-color" content="#2748e8">
+  <title>casaos</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- entrada -->
+  <div id="login" class="login" hidden>
+    <section class="hero" aria-live="polite">
+      <div class="wordmark">casaos</div>
+      <div class="hero-status">
+        <span id="dot" class="dot" aria-hidden="true"></span>
+        <h1 id="hero-title">Procurando o servidor de casa…</h1>
+        <p id="hero-detail">Seus arquivos ficam no disco de casa, não no de ninguém.</p>
+      </div>
+    </section>
+    <section class="login-panel">
+      <form id="login-form" class="login-form">
+        <h2>Entrar</h2>
+        <label>Usuário <input name="username" autocomplete="username" autocapitalize="none" required></label>
+        <label>Senha <input name="password" type="password" autocomplete="current-password" required></label>
+        <p id="login-error" class="error" role="alert"></p>
+        <button class="primary big" type="submit">Entrar</button>
+      </form>
+    </section>
+  </div>
+
+  <!-- aplicativo -->
+  <div id="app" class="app" hidden>
+    <aside class="rail">
+      <div class="wordmark">casaos</div>
+      <nav class="nav" aria-label="Seções">
+        <button class="nav-btn" data-view="files"><i class="ico" data-icon="folder"></i><span>Arquivos</span></button>
+        <button class="nav-btn" data-view="photos"><i class="ico" data-icon="photos"></i><span>Fotos</span></button>
+        <button class="nav-btn" data-view="trash"><i class="ico" data-icon="trash"></i><span>Lixeira</span></button>
+        <button class="nav-btn" data-view="admin" id="nav-admin" hidden><i class="ico" data-icon="shield"></i><span>Administração</span></button>
+      </nav>
+      <div class="meter">
+        <div class="meter-bar"><span id="meter-fill"></span></div>
+        <div id="meter-text" class="small muted"></div>
+      </div>
+      <div class="me">
+        <b id="me-name"></b>
+        <button id="btn-password" class="link">Trocar senha</button>
+        <button id="btn-logout" class="link">Sair</button>
+      </div>
+    </aside>
+
+    <main>
+      <!-- Arquivos -->
+      <section id="view-files" hidden>
+        <div class="toolbar">
+          <nav id="crumbs" class="crumbs" aria-label="Caminho"></nav>
+          <div class="actions">
+            <div class="seg" role="group" aria-label="Modo de exibição">
+              <button id="mode-list" aria-label="Lista"><i class="ico" data-icon="list"></i></button>
+              <button id="mode-tiles" aria-label="Grade"><i class="ico" data-icon="grid"></i></button>
+            </div>
+            <button id="btn-folder"><i class="ico" data-icon="plus"></i>Nova pasta</button>
+            <label class="btn primary"><i class="ico" data-icon="upload"></i>Enviar
+              <input id="file-input" type="file" multiple hidden>
+            </label>
+          </div>
+        </div>
+        <div id="upload-status" class="upload-status" hidden>
+          <div class="meter-bar"><span id="upload-fill"></span></div>
+          <span id="upload-text" class="small"></span>
+        </div>
+        <div id="dropzone" class="dropzone">
+          <ul id="list" class="list"></ul>
+          <p id="empty" class="empty" hidden>Esta pasta está vazia. Arraste arquivos para cá ou toque em Enviar.</p>
+        </div>
+      </section>
+
+      <!-- Fotos -->
+      <section id="view-photos" hidden>
+        <div class="toolbar">
+          <h2 class="page-title">Fotos</h2>
+          <div class="actions">
+            <label class="btn primary"><i class="ico" data-icon="upload"></i>Enviar fotos
+              <input id="photo-input" type="file" accept="image/*,video/*" multiple hidden>
+            </label>
+          </div>
+        </div>
+        <div id="photo-upload" class="upload-status" hidden>
+          <div class="meter-bar"><span id="photo-fill"></span></div>
+          <span id="photo-text" class="small"></span>
+        </div>
+        <div id="mosaic"></div>
+        <p id="photos-empty" class="empty" hidden>Nenhuma foto ainda. Envie fotos e vídeos e eles aparecem aqui, do mais novo para o mais antigo.</p>
+        <div id="sentinel" class="sentinel" hidden>Carregando…</div>
+      </section>
+
+      <!-- Lixeira -->
+      <section id="view-trash" hidden>
+        <div class="toolbar">
+          <h2 class="page-title">Lixeira</h2>
+          <div class="actions"><button id="btn-empty" class="danger">Esvaziar lixeira</button></div>
+        </div>
+        <p id="trash-note" class="muted"></p>
+        <div class="panel"><ul id="trash-list" class="list"></ul>
+          <p id="trash-empty" class="empty" hidden>A lixeira está vazia.</p></div>
+      </section>
+
+      <!-- Administração -->
+      <section id="view-admin" hidden>
+        <h2 class="page-title">Administração</h2>
+        <h3>Armazenamento</h3>
+        <div id="storage-card" class="panel pad"></div>
+
+        <h3>Usuários</h3>
+        <form id="user-form" class="panel pad user-form">
+          <input name="username" placeholder="Nome de usuário" autocapitalize="none" required>
+          <input name="password" type="password" placeholder="Senha (mínimo 8)" minlength="8" required>
+          <input name="quota" type="number" min="0" step="0.5" placeholder="Limite em GB (vazio = sem limite)">
+          <label class="check"><input name="is_admin" type="checkbox"> Administrador</label>
+          <button class="primary" type="submit">Criar usuário</button>
+        </form>
+        <p id="user-error" class="error" role="alert"></p>
+        <div class="table-wrap"><table id="users"></table></div>
+
+        <h3>Atividade recente</h3>
+        <div class="table-wrap"><table id="logs"></table></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <dialog id="ask">
+    <form method="dialog" id="ask-form">
+      <h3 id="ask-title"></h3>
+      <input id="ask-input" required>
+      <menu>
+        <button type="button" id="ask-cancel">Cancelar</button>
+        <button class="primary" id="ask-ok">Confirmar</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="preview" class="preview">
+    <div class="pv-bar">
+      <span id="pv-name" class="pv-name"></span>
+      <a id="pv-download" class="btn" href="#"><i class="ico" data-icon="download"></i>Baixar</a>
+      <button id="pv-close">Fechar</button>
+    </div>
+    <button id="pv-prev" class="pv-nav pv-prev" aria-label="Anterior">‹</button>
+    <div id="pv-body" class="pv-body"></div>
+    <button id="pv-next" class="pv-nav pv-next" aria-label="Próximo">›</button>
+  </dialog>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
