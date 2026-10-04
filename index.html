@@ -6,6 +6,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https: http://localhost:* http://127.0.0.1:* blob: data:; media-src 'self' https: http://localhost:* http://127.0.0.1:* blob:; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; object-src 'none'; base-uri 'none'">
   <meta name="theme-color" content="#2748e8">
   <title>casaos</title>
+  <script src="theme-init.js"></script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -22,7 +23,7 @@
     <section class="login-panel">
       <form id="login-form" class="login-form">
         <h2>Entrar</h2>
-        <label>Usuário <input name="username" autocomplete="username" autocapitalize="none" required></label>
+        <label>Usuário <input name="username" autocomplete="username" autocapitalize="none" autocorrect="off" required></label>
         <label>Senha <input name="password" type="password" autocomplete="current-password" required></label>
         <p id="login-error" class="error" role="alert"></p>
         <button class="primary big" type="submit">Entrar</button>
@@ -32,13 +33,15 @@
 
   <!-- aplicativo -->
   <div id="app" class="app" hidden>
-    <aside class="rail">
+    <header class="rail">
       <div class="wordmark">casaos</div>
+      <button id="chip" class="chip" aria-label="Meu espaço e perfil"><span id="chip-text"></span></button>
       <nav class="nav" aria-label="Seções">
         <button class="nav-btn" data-view="files"><i class="ico" data-icon="folder"></i><span>Arquivos</span></button>
         <button class="nav-btn" data-view="photos"><i class="ico" data-icon="photos"></i><span>Fotos</span></button>
         <button class="nav-btn" data-view="trash"><i class="ico" data-icon="trash"></i><span>Lixeira</span></button>
-        <button class="nav-btn" data-view="admin" id="nav-admin" hidden><i class="ico" data-icon="shield"></i><span>Administração</span></button>
+        <button class="nav-btn" data-view="profile"><i class="ico" data-icon="user"></i><span>Perfil</span></button>
+        <button class="nav-btn" data-view="admin" id="nav-admin" hidden><i class="ico" data-icon="shield"></i><span>Admin</span></button>
       </nav>
       <div class="meter">
         <div class="meter-bar"><span id="meter-fill"></span></div>
@@ -46,34 +49,34 @@
       </div>
       <div class="me">
         <b id="me-name"></b>
-        <button id="btn-password" class="link">Trocar senha</button>
-        <button id="btn-logout" class="link">Sair</button>
+        <button id="btn-logout-rail" class="link">Sair</button>
       </div>
-    </aside>
+    </header>
 
     <main>
       <!-- Arquivos -->
       <section id="view-files" hidden>
+        <div class="mobile-head mobile-only">
+          <button id="back-btn" class="back" aria-label="Voltar" hidden><i class="ico" data-icon="back"></i></button>
+          <h2 id="folder-title">Meus arquivos</h2>
+        </div>
         <div class="toolbar">
-          <nav id="crumbs" class="crumbs" aria-label="Caminho"></nav>
+          <nav id="crumbs" class="crumbs desktop-only" aria-label="Caminho"></nav>
           <div class="actions">
+            <select id="sort" aria-label="Ordenar por">
+              <option value="name">Nome</option><option value="date">Data</option><option value="size">Tamanho</option>
+            </select>
             <div class="seg" role="group" aria-label="Modo de exibição">
               <button id="mode-list" aria-label="Lista"><i class="ico" data-icon="list"></i></button>
               <button id="mode-tiles" aria-label="Grade"><i class="ico" data-icon="grid"></i></button>
             </div>
-            <button id="btn-folder"><i class="ico" data-icon="plus"></i>Nova pasta</button>
-            <label class="btn primary"><i class="ico" data-icon="upload"></i>Enviar
-              <input id="file-input" type="file" multiple hidden>
-            </label>
+            <button id="btn-folder" class="desktop-only"><i class="ico" data-icon="plus"></i>Nova pasta</button>
+            <button id="btn-upload" class="btn primary desktop-only"><i class="ico" data-icon="upload"></i>Enviar</button>
           </div>
-        </div>
-        <div id="upload-status" class="upload-status" hidden>
-          <div class="meter-bar"><span id="upload-fill"></span></div>
-          <span id="upload-text" class="small"></span>
         </div>
         <div id="dropzone" class="dropzone">
           <ul id="list" class="list"></ul>
-          <p id="empty" class="empty" hidden>Esta pasta está vazia. Arraste arquivos para cá ou toque em Enviar.</p>
+          <p id="empty" class="empty" hidden>Esta pasta está vazia. Toque no + para enviar arquivos ou criar uma pasta.</p>
         </div>
       </section>
 
@@ -81,18 +84,10 @@
       <section id="view-photos" hidden>
         <div class="toolbar">
           <h2 class="page-title">Fotos</h2>
-          <div class="actions">
-            <label class="btn primary"><i class="ico" data-icon="upload"></i>Enviar fotos
-              <input id="photo-input" type="file" accept="image/*,video/*" multiple hidden>
-            </label>
-          </div>
-        </div>
-        <div id="photo-upload" class="upload-status" hidden>
-          <div class="meter-bar"><span id="photo-fill"></span></div>
-          <span id="photo-text" class="small"></span>
+          <div class="actions"><button id="btn-photo-upload" class="btn primary desktop-only"><i class="ico" data-icon="upload"></i>Enviar fotos</button></div>
         </div>
         <div id="mosaic"></div>
-        <p id="photos-empty" class="empty" hidden>Nenhuma foto ainda. Envie fotos e vídeos e eles aparecem aqui, do mais novo para o mais antigo.</p>
+        <p id="photos-empty" class="empty" hidden>Nenhuma foto ainda. Toque no + para enviar fotos e vídeos. Eles aparecem aqui, do mais novo para o mais antigo.</p>
         <div id="sentinel" class="sentinel" hidden>Carregando…</div>
       </section>
 
@@ -100,11 +95,64 @@
       <section id="view-trash" hidden>
         <div class="toolbar">
           <h2 class="page-title">Lixeira</h2>
-          <div class="actions"><button id="btn-empty" class="danger">Esvaziar lixeira</button></div>
+          <div class="actions"><button id="btn-empty" class="danger">Esvaziar</button></div>
         </div>
         <p id="trash-note" class="muted"></p>
-        <div class="panel"><ul id="trash-list" class="list"></ul>
+        <div class="panel"><ul id="trash-list" class="list rows"></ul>
           <p id="trash-empty" class="empty" hidden>A lixeira está vazia.</p></div>
+      </section>
+
+      <!-- Perfil -->
+      <section id="view-profile" hidden>
+        <div class="profile-head">
+          <div id="avatar" class="avatar" aria-hidden="true"></div>
+          <div class="grow">
+            <input id="p-name" placeholder="Nome de exibição" maxlength="40" aria-label="Nome de exibição">
+            <div id="p-user" class="muted small"></div>
+          </div>
+        </div>
+
+        <div class="panel pad" id="p-usage"></div>
+
+        <h3>Aparência</h3>
+        <div class="panel pad settings">
+          <div class="setting"><span>Tema</span>
+            <div class="seg" data-setting="theme">
+              <button data-val="auto">Automático</button><button data-val="light">Claro</button><button data-val="dark">Escuro</button>
+            </div></div>
+          <div class="setting"><span>Cor de destaque</span>
+            <div class="swatches" data-setting="accent" role="group" aria-label="Cor de destaque">
+              <button class="swatch sw-cobalto" data-val="cobalto" aria-label="Cobalto"></button>
+              <button class="swatch sw-mar" data-val="mar" aria-label="Verde-mar"></button>
+              <button class="swatch sw-violeta" data-val="violeta" aria-label="Violeta"></button>
+              <button class="swatch sw-rosa" data-val="rosa" aria-label="Rosa"></button>
+              <button class="swatch sw-grafite" data-val="grafite" aria-label="Grafite"></button>
+            </div></div>
+        </div>
+
+        <h3>Arquivos</h3>
+        <div class="panel pad settings">
+          <div class="setting"><span>Visualização padrão</span>
+            <div class="seg" data-setting="files_view"><button data-val="list">Lista</button><button data-val="tiles">Grade</button></div></div>
+          <div class="setting"><span>Ordenar por</span>
+            <div class="seg" data-setting="files_sort"><button data-val="name">Nome</button><button data-val="date">Data</button><button data-val="size">Tamanho</button></div></div>
+        </div>
+
+        <h3>Fotos e vídeos</h3>
+        <div class="panel pad settings">
+          <div class="setting"><span>Tamanho das miniaturas</span>
+            <div class="seg" data-setting="photo_size"><button data-val="small">Pequeno</button><button data-val="medium">Médio</button><button data-val="large">Grande</button></div></div>
+          <div class="setting"><span>Pasta que recebe as fotos enviadas</span>
+            <input id="p-folder" maxlength="100" aria-label="Pasta de envio das fotos"></div>
+          <label class="setting"><span>Tocar vídeos ao abrir</span><input id="p-autoplay" type="checkbox" role="switch"></label>
+        </div>
+
+        <h3>Segurança</h3>
+        <div class="panel pad stack">
+          <button id="btn-password">Trocar senha</button>
+          <button id="btn-logout-others">Sair em todos os outros aparelhos</button>
+          <button id="btn-logout" class="danger">Sair deste aparelho</button>
+        </div>
       </section>
 
       <!-- Administração -->
@@ -113,21 +161,53 @@
         <h3>Armazenamento</h3>
         <div id="storage-card" class="panel pad"></div>
 
+        <details id="migrate" class="panel pad migrate">
+          <summary>Mudar o local de armazenamento (SSD → HD externo)</summary>
+          <p class="muted small">Recurso novo, ainda sem teste com disco real. Copia tudo para outro disco, confere cada arquivo e só então troca o local. Os arquivos antigos não são apagados. Enquanto copia, ninguém consegue enviar ou apagar arquivos.</p>
+          <label class="field">Pasta de destino <input id="mig-path" placeholder="Ex.: E:\NuvemPessoal" autocapitalize="none" autocorrect="off"></label>
+          <label class="field">Verificação dos arquivos copiados
+            <select id="mig-verify"><option value="full">Completa (mais segura)</option><option value="fast">Rápida (só o tamanho)</option></select></label>
+          <div class="actions wrap">
+            <button id="mig-check">Verificar destino</button>
+            <button id="mig-start" class="primary" disabled>Iniciar transferência</button>
+            <button id="mig-cancel" class="danger" hidden>Cancelar</button>
+          </div>
+          <ul id="mig-problems" class="problems"></ul>
+          <div id="mig-progress" class="mig-progress" hidden>
+            <div class="meter-bar"><span id="mig-fill"></span></div>
+            <p id="mig-text" class="small"></p>
+          </div>
+        </details>
+
         <h3>Usuários</h3>
         <form id="user-form" class="panel pad user-form">
-          <input name="username" placeholder="Nome de usuário" autocapitalize="none" required>
+          <input name="username" placeholder="Nome de usuário" autocapitalize="none" autocorrect="off" required>
           <input name="password" type="password" placeholder="Senha (mínimo 8)" minlength="8" required>
-          <input name="quota" type="number" min="0" step="0.5" placeholder="Limite em GB (vazio = sem limite)">
+          <input name="quota" type="number" min="0" step="0.5" inputmode="decimal" placeholder="Espaço em GB (opcional)">
+          <input name="maxfile" type="number" min="0" step="0.5" inputmode="decimal" placeholder="Máx. por arquivo, GB (opcional)">
           <label class="check"><input name="is_admin" type="checkbox"> Administrador</label>
           <button class="primary" type="submit">Criar usuário</button>
         </form>
         <p id="user-error" class="error" role="alert"></p>
-        <div class="table-wrap"><table id="users"></table></div>
+        <div id="users" class="ugrid"></div>
 
         <h3>Atividade recente</h3>
-        <div class="table-wrap"><table id="logs"></table></div>
+        <div id="logs" class="panel logs"></div>
       </section>
     </main>
+
+    <button id="fab" class="fab" aria-label="Adicionar" hidden><i class="ico" data-icon="plus"></i></button>
+
+    <div id="upbar" class="upbar" hidden>
+      <div class="up-row"><span id="up-text" class="small"></span><button id="up-cancel" class="link">Cancelar</button></div>
+      <div class="meter-bar"><span id="up-fill"></span></div>
+    </div>
+  </div>
+
+  <div hidden>
+    <input id="file-input" type="file" multiple>
+    <input id="photo-input" type="file" accept="image/*,video/*,.heic,.heif" multiple>
+    <input id="camera-input" type="file" accept="image/*" capture="environment">
   </div>
 
   <div id="toast" class="toast" role="status" hidden></div>
@@ -143,11 +223,18 @@
     </form>
   </dialog>
 
+  <dialog id="sheet" class="sheet">
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <div id="sheet-title" class="sheet-title"></div>
+    <div id="sheet-body" class="sheet-body"></div>
+  </dialog>
+
   <dialog id="preview" class="preview">
     <div class="pv-bar">
       <span id="pv-name" class="pv-name"></span>
-      <a id="pv-download" class="btn" href="#"><i class="ico" data-icon="download"></i>Baixar</a>
-      <button id="pv-close">Fechar</button>
+      <span id="pv-count" class="pv-count"></span>
+      <a id="pv-download" class="btn" href="#"><i class="ico" data-icon="download"></i><span class="lbl">Baixar</span></a>
+      <button id="pv-close" aria-label="Fechar"><i class="ico" data-icon="close"></i><span class="lbl">Fechar</span></button>
     </div>
     <button id="pv-prev" class="pv-nav pv-prev" aria-label="Anterior">‹</button>
     <div id="pv-body" class="pv-body"></div>
