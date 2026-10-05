@@ -77,6 +77,12 @@ function applyPrefs(p) {
   const dark = t === "dark" || (t === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
   r.dataset.mode = dark ? "dark" : "light"; r.dataset.accent = p.accent || "cobalto"; r.dataset.photo = p.photo_size || "medium";
   store.set("casaos_prefs", JSON.stringify(p));
+  syncThemeColor();
+}
+function syncThemeColor() { // cor da barra de status do celular acompanha o tema
+  const m = document.querySelector('meta[name="theme-color"]'); if (!m) return;
+  const v = getComputedStyle(document.documentElement).getPropertyValue($("#app")?.hidden === false ? "--surface" : "--hero").trim();
+  if (v) m.setAttribute("content", v);
 }
 const prefsNow = () => state.me?.settings || JSON.parse(store.get("casaos_prefs") || "{}");
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => applyPrefs(prefsNow()));
@@ -102,26 +108,31 @@ async function checkHealth() {
   try {
     const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 7000);
     const h = await (await fetch(API + "/api/health", { signal: ctl.signal })).json(); clearTimeout(t);
+    if (store.get("casaos_token") && !$("#login").hidden) setTimeout(boot, 0); // servidor voltou: entra sozinho
     if (h.storage_online) { dot.className = "dot on"; title.textContent = "Servidor de casa online."; detail.textContent = "Seus arquivos ficam no disco de casa, não no de ninguém."; }
     else { dot.className = "dot disk"; title.textContent = "O disco de casa está desconectado."; detail.textContent = "O servidor está ligado, mas o armazenamento não. Você consegue entrar, só não vai ver os arquivos até reconectar."; }
   } catch { dot.className = "dot"; title.textContent = "Servidor de casa desligado."; detail.textContent = "O notebook está desligado ou sem internet. Tentando de novo a cada poucos segundos."; }
 }
-function showLogin() {
-  state.me = null; store.del("casaos_token");
-  $("#app").hidden = true; $("#login").hidden = false; $("#login-form").password.value = "";
+function showLogin(keepToken = false) {
+  state.me = null; if (!keepToken) store.del("casaos_token"); // servidor desligado não é motivo para perder o login
+  $("#app").hidden = true; $("#login").hidden = false; $("#login-form").password.value = ""; syncThemeColor();
   checkHealth(); clearInterval(healthTimer); healthTimer = setInterval(checkHealth, 15000);
 }
 async function boot() {
   applyPrefs(prefsNow());
   if (!store.get("casaos_token")) return showLogin();
-  try { setMe(await api("/api/auth/me")); enterApp(); } catch (e) { if (e.offline) showLogin(); }
+  try { setMe(await api("/api/auth/me")); enterApp(); } catch (e) { if (e.offline) showLogin(true); }
 }
 function enterApp() {
   clearInterval(healthTimer);
-  $("#login").hidden = true; $("#app").hidden = false;
+  $("#login").hidden = true; $("#app").hidden = false; syncThemeColor();
   $("#nav-admin").hidden = !state.me.is_admin;
   state.path = "";
-  setView("files");
+  const q = new URLSearchParams(location.search), v = q.get("view"); // atalhos do ícone: ?view=photos
+  setView(["files", "photos", "trash", "profile"].includes(v) || (v === "admin" && state.me.is_admin) ? v : "files");
+  if (q.has("share")) handleShared();
+  if (q.has("view") || q.has("share")) history.replaceState(null, "", location.pathname);
+  renderInstall();
 }
 $("#login-form").onsubmit = async (e) => {
   e.preventDefault(); $("#login-error").textContent = "";
@@ -613,5 +624,54 @@ $("#mig-start").onclick = async () => {
   catch (e) { toast(e.message, true); }
 };
 $("#mig-cancel").onclick = async () => { if (confirm("Cancelar a transferência? Nada será trocado; o local antigo continua em uso.")) await api("/api/admin/storage/migration/cancel", { method: "POST" }).catch(() => {}); };
+
+/* ---------- app instalável (PWA) ---------- */
+let deferredInstall = null;
+const isStandalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); deferredInstall = e; renderInstall(); });
+window.addEventListener("appinstalled", () => { deferredInstall = null; renderInstall(); toast("CasaOS instalado na tela inicial."); });
+function renderInstall() {
+  const box = $("#p-install"); if (!box) return;
+  if (isStandalone()) { box.hidden = true; return; }
+  box.hidden = false; box.replaceChildren();
+  const h = document.createElement("b"); h.textContent = "Instalar o CasaOS no celular"; box.append(h);
+  const p = document.createElement("p"); p.className = "small muted"; box.append(p);
+  if (deferredInstall) {
+    p.textContent = "Abre em tela cheia, com ícone na tela inicial, e aparece no menu Compartilhar do Android.";
+    const b = document.createElement("button"); b.className = "primary"; b.textContent = "Instalar agora";
+    b.onclick = async () => { deferredInstall.prompt(); await deferredInstall.userChoice.catch(() => {}); deferredInstall = null; renderInstall(); };
+    box.append(b);
+  } else if (isIOS()) p.textContent = "No Safari: toque em Compartilhar (o quadrado com a seta) e depois em Adicionar à Tela de Início.";
+  else p.textContent = "No menu do navegador (três pontinhos), escolha Instalar app ou Adicionar à tela inicial.";
+}
+
+/* ---------- receber arquivos do menu Compartilhar do Android ---------- */
+async function handleShared() {
+  if (!("caches" in window)) return;
+  const cache = await caches.open("casaos-share"), keys = (await cache.keys()).sort((a, b) => a.url.localeCompare(b.url)), files = [];
+  for (const req of keys) {
+    const res = await cache.match(req); if (!res) continue;
+    const blob = await res.blob();
+    files.push(new File([blob], decodeURIComponent(res.headers.get("X-Name") || "arquivo"), { type: blob.type, lastModified: Number(res.headers.get("X-Mtime")) || Date.now() }));
+  }
+  await caches.delete("casaos-share");
+  if (!files.length) return;
+  openActions(document.body, `Recebi ${files.length} arquivo(s)`, [
+    ["Enviar para Fotos", "photos", () => uploadToPhotos(files)],
+    ["Enviar para Meus arquivos", "folder", () => uploadFiles(files, "", () => (state.view === "files" ? loadDir(state.path) : refreshMe()))],
+    ["Descartar", "close", () => toast("Arquivos descartados.")],
+  ]);
+}
+
+/* ---------- service worker: abre sem rede e atualiza sozinho ---------- */
+if ("serviceWorker" in navigator) {
+  const hadController = !!navigator.serviceWorker.controller; let reloading = false;
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+  navigator.serviceWorker.addEventListener("controllerchange", () => { // versão nova assumiu: recarrega, se não atrapalhar
+    if (!hadController || reloading || up.active || $("#preview").open) return;
+    reloading = true; location.reload();
+  });
+}
 
 boot();

@@ -5,7 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https: http://localhost:* http://127.0.0.1:* blob: data:; media-src 'self' https: http://localhost:* http://127.0.0.1:* blob:; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; object-src 'none'; base-uri 'none'">
   <meta name="theme-color" content="#2748e8">
-  <title>casaos</title>
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="CasaOS">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="32x32" href="icon/favicon-32.png">
+  <link rel="apple-touch-icon" href="icon/apple-touch-icon.png">
+  <title>CasaOS</title>
   <script src="theme-init.js"></script>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -113,6 +120,7 @@
         </div>
 
         <div class="panel pad" id="p-usage"></div>
+        <div class="panel pad install" id="p-install" hidden></div>
 
         <h3>Aparência</h3>
         <div class="panel pad settings">

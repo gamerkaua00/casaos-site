@@ -191,6 +191,10 @@ dialog.sheet { width: min(460px, 100%); margin: auto auto 0; border-radius: 22px
 .use-line { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .use-line b { font: 700 1.4rem var(--display); letter-spacing: -.02em; }
 
+.install { display: grid; gap: 8px; margin-top: 12px; }
+.install p { margin: 0; }
+.install button { justify-self: start; }
+
 /* administração */
 .stat { display: flex; gap: 32px; flex-wrap: wrap; margin-top: 14px; }
 .stat div { display: grid; }
