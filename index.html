@@ -67,9 +67,11 @@
           <button id="back-btn" class="back" aria-label="Voltar" hidden><i class="ico" data-icon="back"></i></button>
           <h2 id="folder-title">Meus arquivos</h2>
         </div>
+        <div class="searchbar"><i class="ico" data-icon="search"></i><input id="q" type="search" placeholder="Buscar por nome em todas as pastas…" autocomplete="off" aria-label="Buscar por nome"></div>
         <div class="toolbar">
           <nav id="crumbs" class="crumbs desktop-only" aria-label="Caminho"></nav>
           <div class="actions">
+            <button id="btn-select" aria-label="Selecionar vários"><i class="ico" data-icon="check"></i><span class="lbl">Selecionar</span></button>
             <select id="sort" aria-label="Ordenar por">
               <option value="name">Nome</option><option value="date">Data</option><option value="size">Tamanho</option>
             </select>
@@ -81,6 +83,7 @@
             <button id="btn-upload" class="btn primary desktop-only"><i class="ico" data-icon="upload"></i>Enviar</button>
           </div>
         </div>
+        <p id="search-note" class="muted note" hidden></p>
         <div id="dropzone" class="dropzone">
           <ul id="list" class="list"></ul>
           <p id="empty" class="empty" hidden>Esta pasta está vazia. Toque no + para enviar arquivos ou criar uma pasta.</p>
@@ -91,7 +94,7 @@
       <section id="view-photos" hidden>
         <div class="toolbar">
           <h2 class="page-title">Fotos</h2>
-          <div class="actions"><button id="btn-photo-upload" class="btn primary desktop-only"><i class="ico" data-icon="upload"></i>Enviar fotos</button></div>
+          <div class="actions"><button id="btn-select-photos" aria-label="Selecionar vários"><i class="ico" data-icon="check"></i><span class="lbl">Selecionar</span></button><button id="btn-photo-upload" class="btn primary desktop-only"><i class="ico" data-icon="upload"></i>Enviar fotos</button></div>
         </div>
         <div id="mosaic"></div>
         <p id="photos-empty" class="empty" hidden>Nenhuma foto ainda. Toque no + para enviar fotos e vídeos. Eles aparecem aqui, do mais novo para o mais antigo.</p>
@@ -124,11 +127,8 @@
 
         <h3>Aparência</h3>
         <div class="panel pad settings">
-          <div class="setting"><span>Tema</span>
-            <div class="seg" data-setting="theme">
-              <button data-val="auto">Automático</button><button data-val="light">Claro</button><button data-val="dark">Escuro</button>
-            </div></div>
-          <div class="setting"><span>Cor de destaque</span>
+          <div class="setting wide"><span>Tema</span><div id="themes" class="theme-grid" role="group" aria-label="Tema"></div></div>
+          <div class="setting" id="accent-row"><span>Cor de destaque</span>
             <div class="swatches" data-setting="accent" role="group" aria-label="Cor de destaque">
               <button class="swatch sw-cobalto" data-val="cobalto" aria-label="Cobalto"></button>
               <button class="swatch sw-mar" data-val="mar" aria-label="Verde-mar"></button>
@@ -154,6 +154,9 @@
             <input id="p-folder" maxlength="100" aria-label="Pasta de envio das fotos"></div>
           <label class="setting"><span>Tocar vídeos ao abrir</span><input id="p-autoplay" type="checkbox" role="switch"></label>
         </div>
+
+        <h3>Links compartilhados</h3>
+        <div class="panel" id="p-shares"></div>
 
         <h3>Segurança</h3>
         <div class="panel pad stack">
@@ -187,6 +190,13 @@
           </div>
         </details>
 
+        <details id="datefix" class="panel pad migrate">
+          <summary>Corrigir as datas das fotos (EXIF)</summary>
+          <p class="muted small">Lê a data em que cada foto foi tirada e ajusta a data do arquivo, para a galeria ficar na ordem certa (útil para fotos que vieram do WhatsApp ou foram enviadas antes desta versão). Não altera as fotos, só a data do arquivo.</p>
+          <div class="actions"><button id="df-start">Ler as datas das fotos</button></div>
+          <p id="df-text" class="small"></p>
+        </details>
+
         <h3>Usuários</h3>
         <form id="user-form" class="panel pad user-form">
           <input name="username" placeholder="Nome de usuário" autocapitalize="none" autocorrect="off" required>
@@ -203,6 +213,16 @@
         <div id="logs" class="panel logs"></div>
       </section>
     </main>
+
+    <div id="selbar" class="selbar" hidden>
+      <button id="sel-close" aria-label="Cancelar seleção"><i class="ico" data-icon="close"></i></button>
+      <span id="sel-count" class="count"></span>
+      <button id="sel-all" aria-label="Selecionar tudo"><span>Todos</span></button>
+      <button id="sel-move" aria-label="Mover"><i class="ico" data-icon="move"></i><span class="lbl">Mover</span></button>
+      <button id="sel-download" aria-label="Baixar"><i class="ico" data-icon="download"></i><span class="lbl">Baixar</span></button>
+      <button id="sel-share" aria-label="Compartilhar"><i class="ico" data-icon="share"></i><span class="lbl">Compartilhar</span></button>
+      <button id="sel-trash" class="danger" aria-label="Mover para a lixeira"><i class="ico" data-icon="trash"></i><span class="lbl">Excluir</span></button>
+    </div>
 
     <button id="fab" class="fab" aria-label="Adicionar" hidden><i class="ico" data-icon="plus"></i></button>
 
@@ -237,10 +257,21 @@
     <div id="sheet-body" class="sheet-body"></div>
   </dialog>
 
+  <dialog id="picker" class="picker">
+    <div class="pk-head">
+      <button id="pk-back" aria-label="Voltar"><i class="ico" data-icon="back"></i></button>
+      <b id="pk-title">Meus arquivos</b>
+      <button id="pk-new"><i class="ico" data-icon="plus"></i>Nova pasta</button>
+    </div>
+    <ul id="pk-list" class="list rows"></ul>
+    <menu><button id="pk-cancel">Cancelar</button><button id="pk-ok" class="primary">Mover para cá</button></menu>
+  </dialog>
+
   <dialog id="preview" class="preview">
     <div class="pv-bar">
       <span id="pv-name" class="pv-name"></span>
       <span id="pv-count" class="pv-count"></span>
+      <button id="pv-share" aria-label="Compartilhar"><i class="ico" data-icon="share"></i><span class="lbl">Compartilhar</span></button>
       <a id="pv-download" class="btn" href="#"><i class="ico" data-icon="download"></i><span class="lbl">Baixar</span></a>
       <button id="pv-close" aria-label="Fechar"><i class="ico" data-icon="close"></i><span class="lbl">Fechar</span></button>
     </div>

@@ -29,6 +29,11 @@ const ICONS = {
   back: '<path d="M15 5l-7 7 7 7"/>',
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  move: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 13h6m-2.5-2.5L15 13l-2.5 2.5"/>',
+  share: '<circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 10.8l7.6-3.6M8.2 13.2l7.6 3.6"/>',
+  search: '<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.2-4.2"/>',
+  link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
 };
 function icon(name) {
   const i = document.createElement("i"); i.className = "ico";
@@ -72,10 +77,14 @@ async function api(url, opts = {}) {
 }
 
 /* ---------- preferências do perfil ---------- */
+const THEME_IDS = ["auto", "claro", "escuro", "preto-neon", "azul-neon", "preto-ouro", "roxo-neon", "rosa-neon", "floresta"];
+function resolveTheme(t) {
+  t = { light: "claro", dark: "escuro" }[t] || t || "auto"; if (!THEME_IDS.includes(t)) t = "auto";
+  return t === "auto" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "escuro" : "claro") : t;
+}
 function applyPrefs(p) {
-  const r = document.documentElement, t = p.theme || "auto";
-  const dark = t === "dark" || (t === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
-  r.dataset.mode = dark ? "dark" : "light"; r.dataset.accent = p.accent || "cobalto"; r.dataset.photo = p.photo_size || "medium";
+  const r = document.documentElement, th = resolveTheme(p.theme);
+  r.dataset.theme = th; r.dataset.mode = th === "claro" ? "light" : "dark"; r.dataset.accent = p.accent || "cobalto"; r.dataset.photo = p.photo_size || "medium";
   store.set("casaos_prefs", JSON.stringify(p));
   syncThemeColor();
 }
@@ -184,14 +193,14 @@ function openActions(anchor, title, actions) { // actions: [rótulo, ícone, fun
 }
 $("#sheet").addEventListener("click", (e) => { if (e.target === $("#sheet")) $("#sheet").close(); });
 document.addEventListener("click", (e) => { if (openMenuEl && !openMenuEl.contains(e.target) && !e.target.closest(".more")) closeMenu(); });
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenu(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeMenu(); if (sel.on && !document.querySelector("dialog[open]")) exitSel(); } });
 
 /* ---------- navegação ---------- */
 function setView(v) {
-  state.view = v; closeMenu();
+  state.view = v; closeMenu(); exitSel();
   $$("main > section").forEach((s) => (s.hidden = s.id !== "view-" + v));
   $$(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.view === v));
-  $("#fab").hidden = !(v === "files" || v === "photos");
+  syncFab();
   window.scrollTo(0, 0);
   if (v === "files") loadDir(state.path);
   if (v === "photos") resetPhotos();
@@ -204,6 +213,9 @@ $("#chip").onclick = () => setView("profile");
 
 /* ---------- arquivos ---------- */
 const MEDIA = ["image", "video", "audio"];
+const sel = { on: false, items: new Map() }; // caminho -> item selecionado
+let searchSeq = 0, qTimer = null;
+const syncFab = () => { $("#fab").hidden = sel.on || !(state.view === "files" || state.view === "photos"); };
 function sortEntries(list) {
   const k = prefsNow().files_sort || "name";
   const cmp = { name: (a, b) => a.name.localeCompare(b.name, "pt", { numeric: true, sensitivity: "base" }), date: (a, b) => b.modified - a.modified, size: (a, b) => (b.size || 0) - (a.size || 0) }[k];
@@ -212,10 +224,13 @@ function sortEntries(list) {
 async function loadDir(path) {
   try {
     const d = await api(`/api/files?path=${enc(path)}`);
-    state.path = d.path; state.entries = d.entries; renderCrumbs(); renderEntries();
+    d.entries.forEach((e) => { e.path = join(d.path, e.name); });
+    state.path = d.path; state.entries = d.entries; state.query = ""; state.results = []; $("#q").value = ""; $("#search-note").hidden = true;
+    renderCrumbs(); renderEntries();
   } catch (err) { if (err.status === 404 && path) return loadDir(""); toast(err.message, true); }
   refreshMe();
 }
+function reloadView() { if (state.view === "photos") resetPhotos(); else if (state.query) runSearch(); else loadDir(state.path); }
 function renderCrumbs() {
   const nav = $("#crumbs"); nav.replaceChildren();
   const parts = state.path ? state.path.split("/") : [];
@@ -227,45 +242,151 @@ function renderCrumbs() {
   const back = $("#back-btn"); back.hidden = parts.length === 0;
   back.onclick = () => loadDir(parts.slice(0, -1).join("/"));
 }
+const KIND_ICON = { folder: "folder", video: "play", audio: "music" };
+function tick() { const t = document.createElement("span"); t.className = "tick"; t.append(icon("check")); return t; }
 function thumbFor(e) {
   const t = document.createElement("span"); t.className = "thumb";
-  if (e.thumb) { const img = document.createElement("img"); img.loading = "lazy"; img.alt = ""; img.src = abs(e.thumb); t.append(img); }
-  else t.append(icon({ folder: "folder", video: "play", audio: "music" }[e.kind] || "file"));
+  if (e.thumb) {
+    const img = document.createElement("img"); img.loading = "lazy"; img.alt = ""; img.src = abs(e.thumb);
+    img.onerror = () => img.replaceWith(icon(KIND_ICON[e.kind] || "file"));
+    t.append(img);
+    if (e.kind === "video") { const bd = document.createElement("span"); bd.className = "badge"; bd.append(icon("play")); t.append(bd); }
+  } else t.append(icon(KIND_ICON[e.kind] || "file"));
+  t.append(tick());
   return t;
 }
+
+/* seleção múltipla: segurar um item (celular) ou botão Selecionar */
+function applySel() {
+  document.body.classList.toggle("selecting", sel.on);
+  $$("[data-path]").forEach((el) => { const on = sel.items.has(el.dataset.path); el.classList.toggle("selected", on); el.setAttribute("aria-selected", String(on)); });
+  const n = sel.items.size;
+  $("#selbar").hidden = !sel.on;
+  $("#sel-count").textContent = n ? `${n} selecionado${n > 1 ? "s" : ""}` : "Toque nos itens";
+  $("#sel-share").hidden = n !== 1;
+  for (const id of ["sel-move", "sel-download", "sel-trash"]) $("#" + id).disabled = n === 0;
+  syncFab();
+}
+function startSel(item) { sel.on = true; if (item) sel.items.set(item.path, item); applySel(); }
+function toggleSel(item) { if (sel.items.has(item.path)) sel.items.delete(item.path); else sel.items.set(item.path, item); applySel(); }
+function exitSel() { if (!sel.on && !sel.items.size) return; sel.on = false; sel.items.clear(); applySel(); }
+function bindLongPress(el, item) {
+  let t = null, x0 = 0, y0 = 0;
+  const cancel = () => { clearTimeout(t); t = null; };
+  el.addEventListener("pointerdown", (ev) => {
+    if (ev.pointerType === "mouse" || sel.on) return;
+    x0 = ev.clientX; y0 = ev.clientY;
+    t = setTimeout(() => { t = null; el._lp = Date.now(); navigator.vibrate?.(25); startSel(item); }, 450);
+  });
+  el.addEventListener("pointermove", (ev) => { if (t && Math.hypot(ev.clientX - x0, ev.clientY - y0) > 10) cancel(); });
+  ["pointerup", "pointercancel", "pointerleave"].forEach((n) => el.addEventListener(n, cancel));
+  el.addEventListener("contextmenu", (ev) => { if (ev.pointerType !== "mouse") ev.preventDefault(); }); // Android: segurar abriria "salvar imagem"
+  el.addEventListener("click", (ev) => { if (el._lp && Date.now() - el._lp < 800) { ev.stopImmediatePropagation(); ev.preventDefault(); el._lp = 0; } }, true);
+}
+const pool = () => (state.view === "photos" ? state.photos : state.query ? state.results : state.entries);
+$("#btn-select").onclick = () => (sel.on ? exitSel() : startSel());
+$("#btn-select-photos").onclick = () => (sel.on ? exitSel() : startSel());
+$("#sel-close").onclick = exitSel;
+$("#sel-all").onclick = () => { pool().forEach((i) => sel.items.set(i.path, i)); sel.on = true; applySel(); };
+$("#sel-move").onclick = () => moveItems([...sel.items.values()]);
+$("#sel-download").onclick = () => downloadItems([...sel.items.values()]);
+$("#sel-trash").onclick = () => trashItems([...sel.items.values()]);
+$("#sel-share").onclick = () => { const it = [...sel.items.values()][0]; if (it) shareItem(it); };
+
+/* lista e grade (também mostra os resultados da busca) */
 function renderEntries() {
+  const searching = !!state.query;
+  renderItems(searching ? state.results : sortEntries(state.entries), searching);
+}
+function renderItems(list, searching) {
   const p = prefsNow(), mode = p.files_view === "tiles" ? "tiles" : "list";
   const ul = $("#list"); ul.replaceChildren(); ul.className = "list " + (mode === "tiles" ? "tiles" : "rows");
   $("#mode-list").setAttribute("aria-pressed", mode === "list"); $("#mode-tiles").setAttribute("aria-pressed", mode === "tiles");
   $("#sort").value = p.files_sort || "name";
-  $("#empty").hidden = state.entries.length > 0; ul.hidden = state.entries.length === 0;
-  const sorted = sortEntries(state.entries), media = sorted.filter((e) => MEDIA.includes(e.kind));
-  for (const e of sorted) {
-    const path = join(state.path, e.name);
-    const li = document.createElement("li"); li.className = mode === "tiles" ? "tile" : "row";
+  $("#empty").textContent = searching ? "Nada encontrado com esse nome." : "Esta pasta está vazia. Toque no + para enviar arquivos ou criar uma pasta.";
+  $("#empty").hidden = list.length > 0; ul.hidden = list.length === 0;
+  const media = list.filter((e) => MEDIA.includes(e.kind));
+  for (const e of list) {
+    const li = document.createElement("li"); li.className = mode === "tiles" ? "tile" : "row"; li.dataset.path = e.path;
     const open = document.createElement("button"); open.className = "open";
     const txt = document.createElement("span"); txt.className = "txt";
     const name = document.createElement("b"); name.textContent = e.name; txt.append(name);
-    if (mode === "list") { const sub = document.createElement("span"); sub.className = "sub"; sub.textContent = e.is_dir ? fmtDate(e.modified) : [fmtSize(e.size), fmtDate(e.modified)].join(" · "); txt.append(sub); }
+    if (mode === "list" || searching) {
+      const sub = document.createElement("span"); sub.className = "sub";
+      sub.textContent = searching ? [e.folder ? e.folder : "Meus arquivos", e.is_dir ? "" : fmtSize(e.size)].filter(Boolean).join(" · ") : e.is_dir ? fmtDate(e.modified) : [fmtSize(e.size), fmtDate(e.modified)].join(" · ");
+      txt.append(sub);
+    }
     open.append(thumbFor(e), txt);
-    open.onclick = () => (e.is_dir ? loadDir(path) : MEDIA.includes(e.kind) ? openViewer(media, media.indexOf(e)) : download(e));
+    open.onclick = () => {
+      if (sel.on) return toggleSel(e);
+      if (e.is_dir) { state.query = ""; $("#q").value = ""; loadDir(e.path); }
+      else if (MEDIA.includes(e.kind)) openViewer(media, media.indexOf(e));
+      else download(e);
+    };
+    bindLongPress(li, e);
     const more = document.createElement("button"); more.className = "more"; more.setAttribute("aria-label", `Ações para ${e.name}`); more.append(icon("dots"));
     more.onclick = () => openActions(more, e.name, [
-      ...(e.is_dir ? [] : [["Baixar", "download", () => download(e)]]),
-      ["Renomear", "edit", () => renameEntry(e, path)],
-      ["Mover para a lixeira", "trash", () => removeEntry(e, path), "danger"],
+      ...(e.is_dir ? [["Baixar pasta (.zip)", "download", () => downloadItems([e])]] : [["Baixar", "download", () => download(e)]]),
+      ["Mover", "move", () => moveItems([e])],
+      ["Compartilhar", "share", () => shareItem(e)],
+      ["Selecionar", "check", () => startSel(e)],
+      ["Renomear", "edit", () => renameEntry(e, e.path)],
+      ["Mover para a lixeira", "trash", () => removeEntry(e, e.path), "danger"],
     ]);
     li.append(open, more); ul.append(li);
   }
+  applySel();
 }
-function download(e) { const a = document.createElement("a"); a.href = abs(e.dl); a.download = e.name; document.body.append(a); a.click(); a.remove(); }
+function triggerDownload(url, name) { const a = document.createElement("a"); a.href = abs(url); if (name) a.download = name; document.body.append(a); a.click(); a.remove(); }
+function download(e) { triggerDownload(e.dl, e.name); }
+async function downloadItems(items) {
+  if (!items.length) return;
+  if (items.length === 1 && !items[0].is_dir) { exitSel(); return download(items[0]); }
+  try { const r = await api("/api/files/zip-link", { json: { paths: items.map((i) => i.path) } }); toast("Preparando o .zip: o download começa já."); triggerDownload(r.url); exitSel(); }
+  catch (e) { toast(e.message, true); }
+}
+async function trashItems(items) {
+  if (!items.length) return;
+  if (items.length > 1 && !confirm(`Mover ${items.length} itens para a lixeira? Dá para restaurar por 30 dias.`)) return;
+  try { const r = await api("/api/files/trash", { json: { paths: items.map((i) => i.path) } }); toast(`${r.trashed} item(ns) foram para a lixeira.`); exitSel(); reloadView(); }
+  catch (e) { toast(e.message, true); }
+}
+async function moveItems(items) {
+  if (!items.length) return;
+  const dest = await pickFolder(items.filter((i) => i.is_dir).map((i) => i.path));
+  if (dest == null) return;
+  try { const r = await api("/api/files/move", { json: { paths: items.map((i) => i.path), dest } }); toast(r.moved ? `${r.moved} item(ns) movido(s).` : "Já estavam nessa pasta."); exitSel(); reloadView(); }
+  catch (e) { toast(e.message, true); }
+}
+function pickFolder(excluded) { // escolher a pasta de destino, entrando nas subpastas
+  return new Promise((resolve) => {
+    const dlg = $("#picker"); let path = "";
+    const blocked = (p) => excluded.some((x) => p === x || p.startsWith(x + "/"));
+    const load = async () => {
+      let d; try { d = await api(`/api/files?path=${enc(path)}`); } catch (e) { return toast(e.message, true); }
+      $("#pk-title").textContent = path ? path.split("/").pop() : "Meus arquivos"; $("#pk-back").hidden = !path;
+      const ul = $("#pk-list"); ul.replaceChildren();
+      const dirs = d.entries.filter((e) => e.is_dir && !blocked(join(d.path, e.name)));
+      for (const e of dirs) {
+        const li = document.createElement("li"); li.className = "row";
+        const b = document.createElement("button"); b.className = "open"; const th = document.createElement("span"); th.className = "thumb"; th.append(icon("folder"));
+        const nm = document.createElement("b"); nm.textContent = e.name; b.append(th, nm); b.onclick = () => { path = join(d.path, e.name); load(); };
+        li.append(b); ul.append(li);
+      }
+      if (!dirs.length) { const p = document.createElement("p"); p.className = "pk-empty"; p.textContent = "Sem subpastas aqui. Você pode mover para esta pasta ou criar uma nova."; ul.append(p); }
+    };
+    const done = (v) => { dlg.close(); resolve(v); };
+    $("#pk-back").onclick = () => { path = path.split("/").slice(0, -1).join("/"); load(); };
+    $("#pk-new").onclick = async () => { const name = await ask("Nome da nova pasta"); if (!name) return; try { await api("/api/files/folder", { json: { path, name } }); load(); } catch (e) { toast(e.message, true); } };
+    $("#pk-ok").onclick = () => done(path); $("#pk-cancel").onclick = () => done(null); dlg.oncancel = () => done(null);
+    dlg.showModal(); load();
+  });
+}
 async function renameEntry(e, path) {
   const name = await ask("Novo nome", e.name); if (!name || name === e.name) return;
-  try { await api("/api/files/rename", { json: { path, new_name: name } }); loadDir(state.path); } catch (err) { toast(err.message, true); }
+  try { await api("/api/files/rename", { json: { path, new_name: name } }); reloadView(); } catch (err) { toast(err.message, true); }
 }
-async function removeEntry(e, path) {
-  try { await api(`/api/files?path=${enc(path)}`, { method: "DELETE" }); toast(`“${e.name}” foi para a lixeira.`); loadDir(state.path); } catch (err) { toast(err.message, true); }
-}
+async function removeEntry(e) { return trashItems([e]); }
 async function newFolder() {
   const name = await ask("Nome da nova pasta"); if (!name) return;
   try { await api("/api/files/folder", { json: { path: state.path, name } }); loadDir(state.path); } catch (err) { toast(err.message, true); }
@@ -274,6 +395,59 @@ $("#btn-folder").onclick = newFolder;
 $("#mode-list").onclick = () => saveSetting("files_view", "list");
 $("#mode-tiles").onclick = () => saveSetting("files_view", "tiles");
 $("#sort").onchange = (e) => saveSetting("files_sort", e.target.value);
+
+/* busca por nome */
+async function runSearch() {
+  const q = $("#q").value.trim(), seq = ++searchSeq, note = $("#search-note");
+  if (q.length < 2) { if (state.query) { state.query = ""; state.results = []; note.hidden = true; renderEntries(); } return; }
+  try {
+    const d = await api(`/api/files/search?q=${enc(q)}`); if (seq !== searchSeq) return;
+    state.query = q; state.results = d.items; note.textContent = `${d.total} resultado${d.total === 1 ? "" : "s"} para “${q}”${d.total > d.items.length ? ` (mostrando ${d.items.length})` : ""}`; note.hidden = false; renderEntries();
+  } catch (e) { toast(e.message, true); }
+}
+$("#q").addEventListener("input", () => { clearTimeout(qTimer); qTimer = setTimeout(runSearch, 300); });
+
+/* links temporários de compartilhamento */
+const shareUrl = (s) => (API || location.origin) + s.url_path;
+const fmtWhen = (utc) => new Date(utc.replace(" ", "T") + "Z").toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+async function copyText(text, input) {
+  try { await navigator.clipboard.writeText(text); toast("Link copiado."); }
+  catch { if (input) { input.select(); document.execCommand("copy"); toast("Link copiado."); } else toast(text); }
+}
+function shareItem(item) {
+  openActions(document.body, `Compartilhar “${item.name}”`, [["1 hora", 1], ["1 dia", 24], ["7 dias", 168], ["30 dias", 720]].map(([label, h]) => [`Link válido por ${label}`, "link", () => createShare(item, h)]));
+}
+async function createShare(item, hours) {
+  try { showShareLink(await api("/api/shares", { json: { path: item.path, hours } }), item.name); exitSel(); if (state.view === "profile") loadShares(); }
+  catch (e) { toast(e.message, true); }
+}
+function showShareLink(s, name) {
+  $("#sheet-title").textContent = `Link para “${name}”`;
+  const body = $("#sheet-body"); body.replaceChildren();
+  const input = document.createElement("input"); input.className = "linkbox"; input.readOnly = true; input.value = shareUrl(s); input.onfocus = () => input.select();
+  const note = document.createElement("p"); note.className = "sheet-note"; note.textContent = `Quem tiver o link abre sem conta, até ${fmtWhen(s.expires_at)}. Para cancelar antes: Perfil → Links compartilhados.`;
+  const mk = (label, ic, fn) => { const b = document.createElement("button"); b.className = "sheet-btn"; b.append(icon(ic), document.createTextNode(label)); b.onclick = fn; return b; };
+  body.append(input, note, mk("Copiar link", "link", () => copyText(input.value, input)));
+  if (navigator.share) body.append(mk("Compartilhar…", "share", () => navigator.share({ title: name, url: input.value }).catch(() => {})));
+  body.append(mk("Pronto", "check", () => $("#sheet").close()));
+  if (!$("#sheet").open) $("#sheet").showModal();
+}
+async function loadShares() {
+  const box = $("#p-shares"); let list;
+  try { list = await api("/api/shares"); } catch { return; }
+  box.replaceChildren();
+  if (!list.length) { const p = document.createElement("p"); p.className = "pk-empty"; p.textContent = "Nenhum link ativo. Use Compartilhar no menu de um arquivo ou pasta."; box.append(p); return; }
+  for (const s of list) {
+    const r = document.createElement("div"); r.className = "share-row";
+    const nm = document.createElement("b"); nm.textContent = (s.is_dir ? "📁 " : "") + s.name;
+    const sub = document.createElement("span"); sub.className = "small muted"; sub.textContent = `Até ${fmtWhen(s.expires_at)} · ${s.views} visita(s) · ${s.downloads} download(s)`;
+    const acts = document.createElement("div"); acts.className = "actions";
+    const c = document.createElement("button"); c.textContent = "Copiar link"; c.onclick = () => copyText(shareUrl(s));
+    const x = document.createElement("button"); x.className = "danger"; x.textContent = "Cancelar link";
+    x.onclick = async () => { try { await api(`/api/shares/${s.id}`, { method: "DELETE" }); toast("Link cancelado."); loadShares(); } catch (e) { toast(e.message, true); } };
+    acts.append(c, x); r.append(nm, sub, acts); box.append(r);
+  }
+}
 
 /* ---------- envio: pequenos em lote, grandes em partes com retomada ---------- */
 const up = { active: false, cancel: false, xhr: null, wake: null };
@@ -412,14 +586,16 @@ function addShot(it, idx) {
     const h = document.createElement("h3"); h.className = "month"; h.textContent = month;
     state.grid = document.createElement("div"); state.grid.className = "mosaic-grid"; $("#mosaic").append(h, state.grid); state.lastMonth = month;
   }
-  const b = document.createElement("button"); b.className = "shot"; b.setAttribute("aria-label", it.name);
-  if (it.kind === "image") { const img = document.createElement("img"); img.loading = "lazy"; img.alt = ""; img.src = abs(it.thumb || it.view); b.append(img); }
-  else {
-    const v = document.createElement("video"); v.muted = true; v.preload = "metadata"; v.playsInline = true; v.src = abs(it.view) + "#t=0.1"; b.append(v);
-    const badge = document.createElement("span"); badge.className = "badge"; badge.append(icon("play")); b.append(badge);
-  }
-  b.onclick = () => openViewer(state.photos, idx);
+  const b = document.createElement("button"); b.className = "shot"; b.dataset.path = it.path; b.setAttribute("aria-label", it.name);
+  if (it.thumb || it.kind === "image") {
+    const img = document.createElement("img"); img.loading = "lazy"; img.alt = ""; img.src = abs(it.thumb || it.view); img.onerror = () => img.remove(); b.append(img);
+  } else { const v = document.createElement("video"); v.muted = true; v.preload = "metadata"; v.playsInline = true; v.src = abs(it.view) + "#t=0.1"; b.append(v); } // sem ffmpeg: primeiro quadro do vídeo
+  if (it.kind === "video") { const badge = document.createElement("span"); badge.className = "badge"; badge.append(icon("play")); b.append(badge); }
+  b.append(tick());
+  b.onclick = () => (sel.on ? toggleSel(it) : openViewer(state.photos, idx));
+  bindLongPress(b, it);
   state.grid.append(b);
+  if (sel.items.has(it.path)) b.classList.add("selected");
 }
 
 /* ---------- visualizador (HEIC aparece convertido) ---------- */
@@ -429,13 +605,14 @@ function showViewer() {
   const it = pv.items[pv.i], body = $("#pv-body"); body.replaceChildren();
   const el = document.createElement(it.kind === "image" ? "img" : it.kind === "video" ? "video" : "audio");
   if (it.kind === "image") { el.src = abs(it.large || it.view); el.alt = it.name; }
-  else { el.src = abs(it.view); el.controls = true; el.autoplay = !!prefsNow().autoplay; if (it.kind === "video") el.playsInline = true; }
+  else { el.src = abs(it.view); if (it.thumb) el.poster = abs(it.thumb); el.controls = true; el.autoplay = !!prefsNow().autoplay; if (it.kind === "video") el.playsInline = true; }
   body.append(el);
   $("#pv-name").textContent = it.name; $("#pv-count").textContent = pv.items.length > 1 ? `${pv.i + 1} / ${pv.items.length}` : "";
   const dl = $("#pv-download"); dl.href = abs(it.dl); dl.download = it.name;
   $("#pv-prev").hidden = pv.i === 0; $("#pv-next").hidden = pv.i === pv.items.length - 1;
 }
 function step(d) { const n = pv.i + d; if (n >= 0 && n < pv.items.length) { pv.i = n; showViewer(); } }
+$("#pv-share").onclick = () => { const it = pv.items[pv.i]; if (it) shareItem(it); };
 $("#pv-prev").onclick = () => step(-1); $("#pv-next").onclick = () => step(1); $("#pv-close").onclick = () => $("#preview").close();
 $("#preview").addEventListener("close", () => $("#pv-body").replaceChildren());
 $("#preview").addEventListener("keydown", (e) => { if (e.key === "ArrowLeft") step(-1); if (e.key === "ArrowRight") step(1); });
@@ -497,7 +674,35 @@ function renderProfile() {
   lim.textContent = `Tamanho máximo por arquivo: ${me.max_file_bytes ? fmtSize(me.max_file_bytes) : "sem limite"} · A lixeira conta no espaço.`; box.append(lim);
   $$("[data-setting]").forEach((g) => { const k = g.dataset.setting; g.querySelectorAll("button[data-val]").forEach((b) => b.setAttribute("aria-pressed", String(s[k] === b.dataset.val))); });
   $("#p-folder").value = s.photo_folder; $("#p-autoplay").checked = !!s.autoplay;
+  renderThemes(); loadShares();
 }
+const THEMES = [
+  { id: "auto", label: "Automático", c: null },
+  { id: "claro", label: "Claro", c: ["#e8edf3", "#ffffff", "#2748e8", "#0e1a2b"] },
+  { id: "escuro", label: "Escuro", c: ["#0b1220", "#131c2e", "#8ea2ff", "#e9eef8"] },
+  { id: "preto-neon", label: "Preto neon", c: ["#040405", "#0c0d0f", "#39ff88", "#e9fff2"] },
+  { id: "azul-neon", label: "Azul neon", c: ["#030818", "#081231", "#2ec4ff", "#e5f0ff"] },
+  { id: "preto-ouro", label: "Preto e dourado", c: ["#080706", "#12100b", "#e9b949", "#f7edd2"] },
+  { id: "roxo-neon", label: "Roxo neon", c: ["#07040f", "#110a22", "#c35bff", "#f1e8ff"] },
+  { id: "rosa-neon", label: "Rosa neon", c: ["#0b0407", "#170810", "#ff3d9a", "#ffe9f3"] },
+  { id: "floresta", label: "Floresta", c: ["#060f0a", "#0d1a12", "#8be04e", "#e8f6ea"] },
+];
+function renderThemes() {
+  const box = $("#themes"); box.replaceChildren(); const cur = resolveSaved(prefsNow().theme);
+  for (const t of THEMES) {
+    const b = document.createElement("button"); b.className = "theme-card"; b.setAttribute("aria-pressed", String(cur === t.id)); b.setAttribute("aria-label", `Tema ${t.label}`);
+    const tc = document.createElement("span"); tc.className = "tc";
+    const mkI = (cls, bg, op) => { const i = document.createElement("i"); i.className = cls; i.style.background = bg; if (op) i.style.opacity = op; tc.append(i); };
+    if (t.c) { tc.style.background = t.c[0]; mkI("bar", t.c[1]); mkI("dot", t.c[2]); mkI("line", t.c[3], ".55"); }
+    else { tc.style.background = "linear-gradient(135deg, #e8edf3 50%, #0b1220 50%)"; mkI("dot", "#2748e8"); }
+    const n = document.createElement("span"); n.className = "n"; n.textContent = t.label;
+    b.append(tc, n);
+    b.onclick = () => { applyPrefs({ ...prefsNow(), theme: t.id }); saveSetting("theme", t.id); }; // muda na hora e salva
+    box.append(b);
+  }
+  $("#accent-row").hidden = !["auto", "claro", "escuro"].includes(cur);
+}
+const resolveSaved = (t) => { t = { light: "claro", dark: "escuro" }[t] || t || "auto"; return THEME_IDS.includes(t) ? t : "auto"; };
 $("#view-profile").addEventListener("click", (e) => { const b = e.target.closest("[data-setting] button[data-val]"); if (b) saveSetting(b.closest("[data-setting]").dataset.setting, b.dataset.val); });
 $("#p-autoplay").onchange = (e) => saveSetting("autoplay", e.target.checked);
 $("#p-folder").onchange = (e) => saveSetting("photo_folder", e.target.value.trim());
@@ -521,6 +726,8 @@ const ACTION_LABEL = {
   limite_arquivo_alterado: "Limite por arquivo alterado", limite_arquivo_removido: "Limite por arquivo removido", upload: "Enviou arquivos",
   pasta_criada: "Criou pasta", renomeado: "Renomeou", enviado_para_lixeira: "Mandou para a lixeira", restaurado: "Restaurou da lixeira",
   excluido_definitivamente: "Excluiu de vez", lixeira_esvaziada: "Esvaziou a lixeira", sessoes_encerradas: "Saiu dos outros aparelhos",
+  movido: "Moveu arquivos", link_criado: "Criou um link", link_removido: "Cancelou um link", link_aberto: "Abriram um link",
+  link_baixado: "Baixaram por um link", datas_corrigidas: "Corrigiu as datas das fotos",
   migracao_iniciada: "Migração iniciada", migracao_concluida: "Migração concluída", migracao_cancelada: "Migração cancelada", migracao_falhou: "Migração falhou",
 };
 async function loadAdmin() {
@@ -536,7 +743,10 @@ async function loadAdmin() {
       const d = document.createElement("div"), b = document.createElement("b"), s = document.createElement("span"); b.textContent = v; s.className = "muted small"; s.textContent = k; d.append(b, s); stat.append(d);
     }); card.append(stat);
   } else { const p = document.createElement("p"); p.className = "muted"; p.textContent = "Os arquivos não foram perdidos. Reconecte o disco; novos envios ficam bloqueados até lá."; card.append(p); }
-  renderUsers(users); renderLogs(logs); migPoll();
+  const ff = document.createElement("p"); ff.className = "small muted";
+  ff.textContent = st.ffmpeg ? "Miniaturas de vídeo: ligadas." : "Miniaturas de vídeo: desligadas. Instale o ffmpeg para ligar (veja o COMECE-AQUI.txt).";
+  card.append(ff);
+  renderUsers(users); renderLogs(logs); migPoll(); dfPoll();
 }
 function renderUsers(users) {
   const box = $("#users"); box.replaceChildren();
@@ -673,5 +883,18 @@ if ("serviceWorker" in navigator) {
     reloading = true; location.reload();
   });
 }
+
+/* ---------- corrigir datas das fotos (EXIF) ---------- */
+let dfTimer = null, dfWas = false;
+async function dfPoll() {
+  clearTimeout(dfTimer);
+  try {
+    const st = await api("/api/admin/fix-dates"), run = st.state === "running";
+    $("#df-text").textContent = run ? `${st.message} ${st.done} de ${st.total} · ${st.changed} corrigida(s)` : st.message || "";
+    $("#df-start").disabled = run;
+    if (run) { dfWas = true; dfTimer = setTimeout(dfPoll, 1200); } else if (dfWas) { dfWas = false; toast(st.message, st.state === "error"); }
+  } catch {}
+}
+$("#df-start").onclick = async () => { try { await api("/api/admin/fix-dates", { method: "POST" }); dfWas = true; dfPoll(); } catch (e) { toast(e.message, true); } };
 
 boot();

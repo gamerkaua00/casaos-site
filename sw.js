@@ -2,7 +2,7 @@
 //  - guarda a "casca" do app (HTML, CSS, JS, fontes, ícones) para abrir rápido e funcionar sem rede;
 //  - NUNCA guarda dados: tudo que é /api/ (arquivos, fotos, login) sempre vai para a rede;
 //  - recebe arquivos compartilhados de outros apps (menu Compartilhar do Android).
-const VERSION = "casaos-v3";
+const VERSION = "casaos-v4";
 const SHELL = [
   "./", "index.html", "style.css", "app.js", "config.js", "theme-init.js", "manifest.webmanifest",
   "fonts/bricolage.woff2", "fonts/instrument.woff2",
@@ -45,7 +45,7 @@ async function receiveShare(request) {
 self.addEventListener("fetch", (e) => {
   const req = e.request, url = new URL(req.url);
   if (req.method === "POST" && url.pathname.endsWith("/share-target")) return e.respondWith(receiveShare(req));
-  if (req.method !== "GET" || url.origin !== self.location.origin || url.pathname.includes("/api/")) return; // rede direta
+  if (req.method !== "GET" || url.origin !== self.location.origin || url.pathname.includes("/api/") || url.pathname.startsWith("/s/")) return; // rede direta (dados e links públicos)
 
   if (req.mode === "navigate") { // página: rede primeiro (sempre a versão nova); sem rede, a cópia guardada
     e.respondWith(fetch(req).catch(async () => (await caches.match("index.html", { ignoreSearch: true })) || (await caches.match("./", { ignoreSearch: true }))));
