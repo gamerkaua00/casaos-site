@@ -1,0 +1,33 @@
+CasaOS - avisos de terceiros
+Copyright (c) 2026 Kauã Mazur dos Reis. Todos os direitos reservados (veja LICENSE.txt).
+
+O CasaOS usa os componentes abaixo, cada um sob a sua própria licença. Eles NÃO são cobertos
+pela licença do CasaOS.
+
+FONTES (incluídas na pasta fonts, com o texto completo da licença ao lado de cada arquivo)
+- Bricolage Grotesque - Copyright 2022 The Bricolage Grotesque Project Authors
+  (https://github.com/ateliertriay/bricolage) - SIL Open Font License 1.1 (OFL-Bricolage-Grotesque.txt)
+- Instrument Sans - Copyright 2022 The Instrument Sans Project Authors
+  (https://github.com/Instrument/instrument-sans) - SIL Open Font License 1.1 (OFL-Instrument-Sans.txt)
+  Arquivos obtidos pelo pacote Fontsource.
+
+BIBLIOTECAS PYTHON (instaladas pelo instalar.bat a partir do PyPI; não são redistribuídas neste pacote)
+- FastAPI 0.142 ............ MIT
+- Starlette 1.7 ............ BSD-3-Clause
+- Uvicorn 0.54 ............. BSD-3-Clause
+- Pydantic 2.13 ............ MIT
+- python-multipart 0.0.32 .. Apache-2.0
+- argon2-cffi 25.1 ......... MIT
+- Pillow 12.1 .............. MIT-CMU (HPND)
+- pillow-heif 1.8 .......... código BSD-3-Clause; as "wheels" binárias incluem libheif e libde265 (LGPL-3.0)
+                             e x265 (GPL-2.0) e, por isso, são licenciadas como GPL-2.0
+  ATENÇÃO: o CasaOS apenas LISTA o pillow-heif como dependência e o usuário o instala no próprio
+  computador. Se você algum dia empacotar o CasaOS com o Python e as bibliotecas dentro (instalador,
+  executável, imagem), revise essa licença antes de distribuir.
+
+PROGRAMA EXTERNO OPCIONAL
+- FFmpeg - instalado separadamente pelo usuário (ex.: winget install Gyan.FFmpeg). Não é distribuído
+  com o CasaOS. Licença LGPL/GPL conforme a versão instalada (https://ffmpeg.org/legal.html).
+
+SOMENTE NOS TESTES (não vão para o uso normal)
+- pytest (MIT), httpx (BSD-3-Clause), imageio-ffmpeg (BSD-2-Clause).

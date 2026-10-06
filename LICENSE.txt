@@ -1,0 +1,14 @@
+CasaOS
+Copyright (c) 2026 Kauã Mazur dos Reis. Todos os direitos reservados.
+
+Este software, seu código-fonte, seu design e sua documentação são obras de autoria de
+Kauã Mazur dos Reis. Nenhuma parte pode ser copiada, modificada, redistribuída, publicada
+ou usada comercialmente sem autorização prévia e por escrito do autor.
+
+O uso pessoal, em computadores do próprio autor ou de quem ele autorizar, é permitido.
+
+Bibliotecas, fontes e programas de terceiros usados pelo CasaOS continuam sob as suas próprias
+licenças, listadas em AVISOS-DE-TERCEIROS.txt. Esta licença não se aplica a eles.
+
+O software é fornecido "como está", sem garantia de qualquer tipo. O autor não responde por
+perdas de dados: mantenha sempre cópias de segurança dos seus arquivos.

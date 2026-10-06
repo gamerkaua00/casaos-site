@@ -1,10 +1,13 @@
 <!doctype html>
+<!-- © 2026 Kauã Mazur dos Reis. Todos os direitos reservados. -->
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https: http://localhost:* http://127.0.0.1:* blob: data:; media-src 'self' https: http://localhost:* http://127.0.0.1:* blob:; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; object-src 'none'; base-uri 'none'">
   <meta name="theme-color" content="#2748e8">
+  <meta name="author" content="Kauã Mazur dos Reis">
+  <meta name="copyright" content="© 2026 Kauã Mazur dos Reis. Todos os direitos reservados.">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="CasaOS">
@@ -26,6 +29,7 @@
         <h1 id="hero-title">Procurando o servidor de casa…</h1>
         <p id="hero-detail">Seus arquivos ficam no disco de casa, não no de ninguém.</p>
       </div>
+      <p class="legal">© 2026 Kauã Mazur dos Reis. Todos os direitos reservados.<span id="ver"></span></p>
     </section>
     <section class="login-panel">
       <form id="login-form" class="login-form">
@@ -155,8 +159,24 @@
           <label class="setting"><span>Tocar vídeos ao abrir</span><input id="p-autoplay" type="checkbox" role="switch"></label>
         </div>
 
+        <h3>Dados móveis</h3>
+        <div class="panel pad settings">
+          <div class="setting wide"><span>Economia de dados</span>
+            <div class="seg" data-setting="data_saver"><button data-val="auto">Automática</button><button data-val="on">Sempre ligada</button><button data-val="off">Desligada</button></div>
+            <p id="data-status" class="small muted mini"></p>
+            <p class="small muted mini">Ligada: miniaturas e fotos mais leves (e guardadas no aparelho), vídeos na versão leve de 480p quando o PC tem o ffmpeg, nada de baixar vídeo antes de tocar e aviso antes de enviar arquivos grandes. Você ainda escolhe a qualidade de cada vídeo no botão Qualidade.</p>
+          </div>
+        </div>
+
         <h3>Links compartilhados</h3>
         <div class="panel" id="p-shares"></div>
+
+        <h3>Sobre o CasaOS</h3>
+        <div class="panel pad about">
+          <b>CasaOS <span id="about-ver" class="muted"></span></b>
+          <p class="small muted mini">Feito por Kauã Mazur dos Reis.<br>© 2026 Kauã Mazur dos Reis. Todos os direitos reservados.</p>
+          <a class="small" href="licencas.html">Licenças e avisos de terceiros</a>
+        </div>
 
         <h3>Segurança</h3>
         <div class="panel pad stack">
@@ -188,6 +208,15 @@
             <div class="meter-bar"><span id="mig-fill"></span></div>
             <p id="mig-text" class="small"></p>
           </div>
+        </details>
+
+        <details id="perf" class="panel pad migrate">
+          <summary>Desempenho, vídeos leves e cache</summary>
+          <p id="perf-info" class="small muted"></p>
+          <label class="check"><input id="perf-auto" type="checkbox" role="switch"> Preparar a versão leve (720p) de cada vídeo novo automaticamente</label>
+          <p class="small muted">Gasta processador do PC e cerca de um terço do tamanho do vídeo em disco (fora da pasta dos arquivos). Sem isso, a versão leve é feita quando alguém pede, e demora alguns minutos em vídeos longos.</p>
+          <div class="actions wrap"><button id="perf-reindex">Reconstruir índice</button><button id="perf-clear" class="danger">Limpar cache</button></div>
+          <p id="perf-text" class="small"></p>
         </details>
 
         <details id="datefix" class="panel pad migrate">
@@ -271,12 +300,14 @@
     <div class="pv-bar">
       <span id="pv-name" class="pv-name"></span>
       <span id="pv-count" class="pv-count"></span>
+      <button id="pv-quality" aria-label="Qualidade do vídeo" hidden><i class="ico" data-icon="signal"></i><span class="lbl" id="pv-q-label">Qualidade</span></button>
       <button id="pv-share" aria-label="Compartilhar"><i class="ico" data-icon="share"></i><span class="lbl">Compartilhar</span></button>
       <a id="pv-download" class="btn" href="#"><i class="ico" data-icon="download"></i><span class="lbl">Baixar</span></a>
       <button id="pv-close" aria-label="Fechar"><i class="ico" data-icon="close"></i><span class="lbl">Fechar</span></button>
     </div>
     <button id="pv-prev" class="pv-nav pv-prev" aria-label="Anterior">‹</button>
     <div id="pv-body" class="pv-body"></div>
+    <div id="pv-prep" class="pv-prep" hidden></div>
     <button id="pv-next" class="pv-nav pv-next" aria-label="Próximo">›</button>
   </dialog>
 

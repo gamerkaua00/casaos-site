@@ -1,3 +1,4 @@
+/* © 2026 Kauã Mazur dos Reis. Todos os direitos reservados. */
 "use strict";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -33,6 +34,7 @@ const ICONS = {
   move: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 13h6m-2.5-2.5L15 13l-2.5 2.5"/>',
   share: '<circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 10.8l7.6-3.6M8.2 13.2l7.6 3.6"/>',
   search: '<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.2-4.2"/>',
+  signal: '<path d="M4 19v-3M9 19v-7M14 19V9M19 19V5"/>',
   link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
 };
 function icon(name) {
@@ -93,6 +95,11 @@ function syncThemeColor() { // cor da barra de status do celular acompanha o tem
   const v = getComputedStyle(document.documentElement).getPropertyValue($("#app")?.hidden === false ? "--surface" : "--hero").trim();
   if (v) m.setAttribute("content", v);
 }
+const conn = () => navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+const cellular = () => { const c = conn(); return !!c && (c.saveData === true || c.type === "cellular" || ["slow-2g", "2g", "3g"].includes(c.effectiveType)); };
+const isEco = () => { const m = prefsNow().data_saver || "auto"; return m === "on" || (m === "auto" && cellular()); };
+const thumbUrl = (it) => abs(isEco() && it.thumb_s ? it.thumb_s : it.thumb);
+conn()?.addEventListener?.("change", () => { if (state.view === "profile") renderProfile(); });
 const prefsNow = () => state.me?.settings || JSON.parse(store.get("casaos_prefs") || "{}");
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => applyPrefs(prefsNow()));
 
@@ -102,11 +109,11 @@ function setMe(me) {
   $("#me-name").textContent = shown;
   const { used_bytes: used, quota_bytes: quota } = me, fill = $("#meter-fill");
   let txt;
-  if (used == null) { txt = "Armazenamento offline"; fill.style.width = "0"; }
+  if (used == null) { txt = me.usage_pending ? "Calculando o espaço usado…" : "Armazenamento offline"; fill.style.width = "0"; if (me.usage_pending) setTimeout(refreshMe, 3000); }
   else if (quota) { const pct = Math.min(100, (used / quota) * 100); fill.style.width = pct + "%"; fill.classList.toggle("full", pct >= 90); txt = `${fmtSize(used)} de ${fmtSize(quota)}`; }
   else { fill.style.width = "0"; txt = `${fmtSize(used)} usados · sem limite`; }
   $("#meter-text").textContent = txt;
-  $("#chip-text").textContent = used == null ? "offline" : quota ? `${fmtSize(used)} / ${fmtSize(quota)}` : fmtSize(used);
+  $("#chip-text").textContent = used == null ? (me.usage_pending ? "…" : "offline") : quota ? `${fmtSize(used)} / ${fmtSize(quota)}` : fmtSize(used);
 }
 async function refreshMe() { try { setMe(await api("/api/auth/me")); if (state.view === "profile") renderProfile(); } catch {} }
 
@@ -118,6 +125,7 @@ async function checkHealth() {
     const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 7000);
     const h = await (await fetch(API + "/api/health", { signal: ctl.signal })).json(); clearTimeout(t);
     if (store.get("casaos_token") && !$("#login").hidden) setTimeout(boot, 0); // servidor voltou: entra sozinho
+    $("#ver").textContent = h.version ? `CasaOS v${h.version}` : "";
     if (h.storage_online) { dot.className = "dot on"; title.textContent = "Servidor de casa online."; detail.textContent = "Seus arquivos ficam no disco de casa, não no de ninguém."; }
     else { dot.className = "dot disk"; title.textContent = "O disco de casa está desconectado."; detail.textContent = "O servidor está ligado, mas o armazenamento não. Você consegue entrar, só não vai ver os arquivos até reconectar."; }
   } catch { dot.className = "dot"; title.textContent = "Servidor de casa desligado."; detail.textContent = "O notebook está desligado ou sem internet. Tentando de novo a cada poucos segundos."; }
@@ -247,7 +255,7 @@ function tick() { const t = document.createElement("span"); t.className = "tick"
 function thumbFor(e) {
   const t = document.createElement("span"); t.className = "thumb";
   if (e.thumb) {
-    const img = document.createElement("img"); img.loading = "lazy"; img.alt = ""; img.src = abs(e.thumb);
+    const img = document.createElement("img"); img.loading = "lazy"; img.alt = ""; img.src = thumbUrl(e);
     img.onerror = () => img.replaceWith(icon(KIND_ICON[e.kind] || "file"));
     t.append(img);
     if (e.kind === "video") { const bd = document.createElement("span"); bd.className = "badge"; bd.append(icon("play")); t.append(bd); }
@@ -510,8 +518,9 @@ async function sendChunked(f, path, onBytes) {
 async function uploadFiles(files, path, after) {
   files = [...files]; if (!files.length) return;
   if (up.active) return toast("Já existe um envio em andamento.", true);
-  up.active = true; up.cancel = false;
   const total = files.reduce((s, f) => s + f.size, 0) || 1, t0 = Date.now();
+  if (isEco() && total > 100 * 1024 * 1024 && !confirm(`Economia de dados ligada: enviar ${fmtSize(total)} pode gastar bastante do seu pacote de internet. Continuar?`)) return;
+  up.active = true; up.cancel = false;
   let done = 0, count = 0;
   const report = (extra = 0) => {
     const cur = done + extra, sec = Math.max(1, (Date.now() - t0) / 1000);
@@ -571,7 +580,7 @@ async function loadPhotos(first = false) {
   if (state.photosBusy || (!first && state.photos.length >= state.photosTotal)) return;
   state.photosBusy = true; $("#sentinel").hidden = false;
   try {
-    const d = await api(`/api/files/photos?offset=${state.photos.length}&limit=120`);
+    const d = await api(`/api/files/photos?offset=${state.photos.length}&limit=${isEco() ? 60 : 120}&refresh=${first ? 1 : 0}`);
     state.photosTotal = d.total;
     for (const it of d.items) { state.photos.push(it); addShot(it, state.photos.length - 1); }
     $("#photos-empty").hidden = state.photosTotal > 0;
@@ -588,7 +597,8 @@ function addShot(it, idx) {
   }
   const b = document.createElement("button"); b.className = "shot"; b.dataset.path = it.path; b.setAttribute("aria-label", it.name);
   if (it.thumb || it.kind === "image") {
-    const img = document.createElement("img"); img.loading = "lazy"; img.alt = ""; img.src = abs(it.thumb || it.view); img.onerror = () => img.remove(); b.append(img);
+    const img = document.createElement("img"); img.loading = "lazy"; img.alt = ""; img.src = it.thumb ? thumbUrl(it) : abs(it.view); img.onerror = () => img.remove(); b.append(img);
+  } else if (isEco()) { const ph = document.createElement("span"); ph.className = "thumb"; ph.style.cssText = "width:100%;height:100%;border-radius:0"; ph.append(icon("play")); b.append(ph); // 4G: não baixa vídeo só para mostrar a capa
   } else { const v = document.createElement("video"); v.muted = true; v.preload = "metadata"; v.playsInline = true; v.src = abs(it.view) + "#t=0.1"; b.append(v); } // sem ffmpeg: primeiro quadro do vídeo
   if (it.kind === "video") { const badge = document.createElement("span"); badge.className = "badge"; badge.append(icon("play")); b.append(badge); }
   b.append(tick());
@@ -599,22 +609,54 @@ function addShot(it, idx) {
 }
 
 /* ---------- visualizador (HEIC aparece convertido) ---------- */
-let pv = { items: [], i: 0 };
+let pv = { items: [], i: 0 }, pvQuality = null, pvToken = 0;
+const Q_LABEL = { orig: "Original", 720: "Leve 720p", 480: "Economia 480p" };
 function openViewer(items, i) { pv = { items, i: Math.max(0, i) }; showViewer(); $("#preview").showModal(); }
-function showViewer() {
-  const it = pv.items[pv.i], body = $("#pv-body"); body.replaceChildren();
+function pvDefaultQuality(it) { return it.lite && isEco() ? "480" : "orig"; }
+function showViewer(keepTime = 0) {
+  const it = pv.items[pv.i], body = $("#pv-body"); body.replaceChildren(); $("#pv-prep").hidden = true; const tok = ++pvToken;
   const el = document.createElement(it.kind === "image" ? "img" : it.kind === "video" ? "video" : "audio");
-  if (it.kind === "image") { el.src = abs(it.large || it.view); el.alt = it.name; }
-  else { el.src = abs(it.view); if (it.thumb) el.poster = abs(it.thumb); el.controls = true; el.autoplay = !!prefsNow().autoplay; if (it.kind === "video") el.playsInline = true; }
+  if (it.kind === "image") { el.src = abs(isEco() && it.medium ? it.medium : it.large || it.view); el.alt = it.name; }
+  else {
+    el.controls = true; el.preload = isEco() ? "none" : "metadata"; if (it.kind === "video") el.playsInline = true;
+    if (it.thumb) el.poster = thumbUrl(it);
+    const q = it.kind === "video" && it.lite ? (pvQuality || pvDefaultQuality(it)) : "orig";
+    const play = () => { if (keepTime) el.currentTime = keepTime; if (prefsNow().autoplay && !isEco() || keepTime) el.play().catch(() => {}); };
+    if (q === "orig") { el.src = abs(it.view); el.addEventListener("loadedmetadata", play, { once: true }); }
+    else prepareLite(it, +q, el, tok, play);
+  }
   body.append(el);
   $("#pv-name").textContent = it.name; $("#pv-count").textContent = pv.items.length > 1 ? `${pv.i + 1} / ${pv.items.length}` : "";
   const dl = $("#pv-download"); dl.href = abs(it.dl); dl.download = it.name;
+  const qb = $("#pv-quality"); qb.hidden = !(it.kind === "video" && it.lite);
+  if (!qb.hidden) $("#pv-q-label").textContent = Q_LABEL[pvQuality || pvDefaultQuality(it)];
   $("#pv-prev").hidden = pv.i === 0; $("#pv-next").hidden = pv.i === pv.items.length - 1;
 }
-function step(d) { const n = pv.i + d; if (n >= 0 && n < pv.items.length) { pv.i = n; showViewer(); } }
+async function prepareLite(it, height, el, tok, onReady) { // pede a versão leve e espera ficar pronta (mostra o andamento)
+  const prep = $("#pv-prep");
+  const fail = (msg) => { if (tok !== pvToken) return; prep.hidden = true; toast(msg, true); el.src = abs(it.view); el.addEventListener("loadedmetadata", onReady, { once: true }); };
+  for (;;) {
+    let st; try { st = await api("/api/files/lite", { json: { path: it.path, height } }); } catch (e) { return fail(`${e.message} Tocando o original.`); }
+    if (tok !== pvToken) return; // trocou de vídeo ou fechou
+    if (st.state === "ready") { prep.hidden = true; el.src = abs(st.url); el.addEventListener("loadedmetadata", onReady, { once: true }); return; }
+    if (st.state === "error") return fail(`Não deu para preparar a versão leve (${st.error || "erro"}). Tocando o original.`);
+    prep.hidden = false; prep.replaceChildren();
+    const t = document.createElement("div"); t.textContent = st.state === "queued" ? "Na fila para preparar a versão leve…" : `Preparando a versão leve… ${st.pct || 0}%`;
+    const bar = document.createElement("div"); bar.className = "meter-bar"; const sp = document.createElement("span"); sp.style.width = (st.pct || 0) + "%"; bar.append(sp);
+    const sk = document.createElement("button"); sk.textContent = "Tocar o original agora"; sk.onclick = () => { pvToken++; prep.hidden = true; el.src = abs(it.view); el.addEventListener("loadedmetadata", onReady, { once: true }); };
+    prep.append(t, bar, sk);
+    await sleep(1500);
+  }
+}
+$("#pv-quality").onclick = () => {
+  const it = pv.items[pv.i], cur = pvQuality || pvDefaultQuality(it), v = $("#pv-body video"), t = v ? v.currentTime : 0;
+  openActions(document.body, "Qualidade do vídeo", [["orig", "Original (melhor no Wi-Fi)"], ["720", "Leve 720p (gasta menos dados)"], ["480", "Economia 480p (gasta pouquíssimo)"]]
+    .map(([k, label]) => [(cur === k ? "✓ " : "") + label, "signal", () => { pvQuality = k; showViewer(t); }]));
+};
 $("#pv-share").onclick = () => { const it = pv.items[pv.i]; if (it) shareItem(it); };
+function step(d) { const n = pv.i + d; if (n >= 0 && n < pv.items.length) { pv.i = n; showViewer(); } }
 $("#pv-prev").onclick = () => step(-1); $("#pv-next").onclick = () => step(1); $("#pv-close").onclick = () => $("#preview").close();
-$("#preview").addEventListener("close", () => $("#pv-body").replaceChildren());
+$("#preview").addEventListener("close", () => { pvToken++; $("#pv-prep").hidden = true; $("#pv-body").replaceChildren(); });
 $("#preview").addEventListener("keydown", (e) => { if (e.key === "ArrowLeft") step(-1); if (e.key === "ArrowRight") step(1); });
 (() => { let x0 = null; const el = $("#preview");
   el.addEventListener("touchstart", (e) => { x0 = e.touches[0].clientX; }, { passive: true });
@@ -665,7 +707,7 @@ function renderProfile() {
   $("#p-user").textContent = `@${me.username}${me.is_admin ? " · administrador" : ""}`;
   const box = $("#p-usage"); box.replaceChildren();
   const line = document.createElement("div"); line.className = "use-line";
-  const big = document.createElement("b"); big.textContent = me.used_bytes == null ? "Offline" : `${fmtSize(me.used_bytes)} usados`;
+  const big = document.createElement("b"); big.textContent = me.used_bytes == null ? (me.usage_pending ? "Calculando…" : "Offline") : `${fmtSize(me.used_bytes)} usados`;
   const of = document.createElement("span"); of.className = "muted";
   of.textContent = me.quota_bytes ? `de ${fmtSize(me.quota_bytes)} (${Math.min(100, Math.round(((me.used_bytes || 0) / me.quota_bytes) * 100))}%)` : "sem limite de espaço";
   line.append(big, of); box.append(line);
@@ -674,7 +716,11 @@ function renderProfile() {
   lim.textContent = `Tamanho máximo por arquivo: ${me.max_file_bytes ? fmtSize(me.max_file_bytes) : "sem limite"} · A lixeira conta no espaço.`; box.append(lim);
   $$("[data-setting]").forEach((g) => { const k = g.dataset.setting; g.querySelectorAll("button[data-val]").forEach((b) => b.setAttribute("aria-pressed", String(s[k] === b.dataset.val))); });
   $("#p-folder").value = s.photo_folder; $("#p-autoplay").checked = !!s.autoplay;
+  const eco = isEco(), mode = s.data_saver || "auto";
+  $("#data-status").textContent = mode === "auto" && !conn() ? "Seu navegador não informa o tipo de conexão (comum no iPhone). Use Sempre ligada quando estiver no 4G."
+    : `Agora: economia ${eco ? "LIGADA" : "desligada"}${mode === "auto" ? (eco ? " (conexão de celular detectada)" : " (Wi-Fi ou conexão rápida)") : ""}.`;
   renderThemes(); loadShares();
+  fetch(API + "/api/health").then((r) => r.json()).then((h) => { $("#about-ver").textContent = h.version ? `v${h.version}` : ""; }).catch(() => {});
 }
 const THEMES = [
   { id: "auto", label: "Automático", c: null },
@@ -728,11 +774,12 @@ const ACTION_LABEL = {
   excluido_definitivamente: "Excluiu de vez", lixeira_esvaziada: "Esvaziou a lixeira", sessoes_encerradas: "Saiu dos outros aparelhos",
   movido: "Moveu arquivos", link_criado: "Criou um link", link_removido: "Cancelou um link", link_aberto: "Abriram um link",
   link_baixado: "Baixaram por um link", datas_corrigidas: "Corrigiu as datas das fotos",
+  video_leve_auto: "Vídeo leve automático", indice_reconstruido: "Reconstruiu o índice", cache_limpo: "Limpou o cache",
   migracao_iniciada: "Migração iniciada", migracao_concluida: "Migração concluída", migracao_cancelada: "Migração cancelada", migracao_falhou: "Migração falhou",
 };
 async function loadAdmin() {
-  let st, users, logs;
-  try { [st, users, logs] = await Promise.all([api("/api/admin/storage"), api("/api/admin/users"), api("/api/admin/logs?limit=80")]); } catch (e) { return toast(e.message, true); }
+  let st, users, logs, perf;
+  try { [st, users, logs, perf] = await Promise.all([api("/api/admin/storage"), api("/api/admin/users"), api("/api/admin/logs?limit=80"), api("/api/admin/perf")]); } catch (e) { return toast(e.message, true); }
   const card = $("#storage-card"); card.replaceChildren();
   const head = document.createElement("div");
   const pill = document.createElement("span"); pill.className = "pill" + (st.online ? "" : " off"); pill.textContent = st.online ? "Disponível" : "Offline";
@@ -746,7 +793,7 @@ async function loadAdmin() {
   const ff = document.createElement("p"); ff.className = "small muted";
   ff.textContent = st.ffmpeg ? "Miniaturas de vídeo: ligadas." : "Miniaturas de vídeo: desligadas. Instale o ffmpeg para ligar (veja o COMECE-AQUI.txt).";
   card.append(ff);
-  renderUsers(users); renderLogs(logs); migPoll(); dfPoll();
+  renderUsers(users); renderLogs(logs); renderPerf(perf); migPoll(); dfPoll();
 }
 function renderUsers(users) {
   const box = $("#users"); box.replaceChildren();
@@ -883,6 +930,20 @@ if ("serviceWorker" in navigator) {
     reloading = true; location.reload();
   });
 }
+
+/* ---------- desempenho, vídeos leves e cache ---------- */
+function renderPerf(p) {
+  $("#perf-info").textContent = `Índice de arquivos: ${p.index_rows.toLocaleString("pt-BR")} itens · miniaturas em cache: ${fmtSize(p.cache.thumbs)} · versões leves de vídeo: ${fmtSize(p.cache.lite)} (limite ${fmtSize(p.cache.limit)}) · ffmpeg: ${p.ffmpeg ? "instalado" : "NÃO instalado"}.`;
+  const a = $("#perf-auto"); a.checked = p.auto_lite; a.disabled = !p.ffmpeg;
+}
+$("#perf-auto").onchange = async (e) => { try { renderPerf(await api("/api/admin/perf", { json: { auto_lite: e.target.checked } })); toast(e.target.checked ? "Versões leves automáticas ligadas." : "Desligado."); } catch (err) { toast(err.message, true); } };
+$("#perf-clear").onclick = async () => { if (!confirm("Limpar o cache? As miniaturas e versões leves serão refeitas quando alguém pedir.")) return; try { const r = await api("/api/admin/cache/clear", { method: "POST" }); toast(`${fmtSize(r.freed)} liberados.`); renderPerf(await api("/api/admin/perf")); } catch (e) { toast(e.message, true); } };
+$("#perf-reindex").onclick = async () => {
+  try { await api("/api/admin/reindex", { method: "POST" }); } catch (e) { return toast(e.message, true); }
+  $("#perf-reindex").disabled = true; $("#perf-text").textContent = "Lendo o disco…";
+  for (let i = 0; i < 600; i++) { await sleep(1000); const p = await api("/api/admin/perf").catch(() => null); if (p && p.index.state !== "running") { renderPerf(p); break; } }
+  $("#perf-reindex").disabled = false; $("#perf-text").textContent = "Índice atualizado."; toast("Índice atualizado.");
+};
 
 /* ---------- corrigir datas das fotos (EXIF) ---------- */
 let dfTimer = null, dfWas = false;

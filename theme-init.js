@@ -1,3 +1,4 @@
+/* © 2026 Kauã Mazur dos Reis. Todos os direitos reservados. */
 // Roda antes de desenhar a página: aplica tema, cor e tamanho das fotos já salvos, sem "piscar".
 (function () {
   var r = document.documentElement;

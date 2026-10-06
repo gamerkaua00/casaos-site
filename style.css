@@ -1,3 +1,4 @@
+/* © 2026 Kauã Mazur dos Reis. Todos os direitos reservados. */
 @font-face { font-family: "Bricolage"; src: url(fonts/bricolage.woff2) format("woff2"); font-weight: 200 800; font-display: swap; }
 @font-face { font-family: "Instrument"; src: url(fonts/instrument.woff2) format("woff2"); font-weight: 400 700; font-display: swap; }
 
@@ -254,6 +255,21 @@ dialog.picker menu { padding: 12px 14px calc(12px + env(safe-area-inset-bottom))
 .share-row .actions button { min-height: 38px; padding: 4px 12px; font-size: .9rem; }
 .linkbox { width: 100%; font: .9rem ui-monospace, Consolas, monospace; }
 .sheet-note { padding: 4px 12px 10px; color: var(--muted); font-size: .9rem; }
+
+.mini { margin: 0; }
+.legal { margin: 0; font-size: .82rem; opacity: .75; max-width: 40ch; }
+.legal span { display: block; opacity: .8; }
+.about { display: grid; gap: 6px; }
+.about a { color: var(--accent); }
+.legal-page { max-width: 760px; margin: 0 auto; padding: 28px 16px 60px; }
+.legal-page h1 { font-size: 1.8rem; margin-bottom: 6px; }
+.legal-page h2 { font-size: 1.15rem; margin: 26px 0 8px; }
+.legal-page ul { padding-left: 20px; margin: 0; } .legal-page li { margin: 4px 0; }
+.legal-page a { color: var(--accent); }
+.legal-page table { min-width: 0; }
+.pv-prep { position: absolute; z-index: 4; left: 50%; top: 50%; transform: translate(-50%, -50%); background: rgba(7, 12, 22, .88); color: #fff; padding: 18px 22px; border-radius: 16px; text-align: center; max-width: min(86vw, 380px); display: grid; gap: 10px; }
+.pv-prep .meter-bar { background: rgba(255, 255, 255, .2); }
+.pv-prep button { justify-self: center; background: rgba(255, 255, 255, .14); color: #fff; border-color: transparent; }
 
 /* administração */
 .stat { display: flex; gap: 32px; flex-wrap: wrap; margin-top: 14px; }

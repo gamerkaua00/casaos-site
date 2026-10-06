@@ -1,8 +1,9 @@
+/* © 2026 Kauã Mazur dos Reis. Todos os direitos reservados. */
 // Service worker do CasaOS.
 //  - guarda a "casca" do app (HTML, CSS, JS, fontes, ícones) para abrir rápido e funcionar sem rede;
 //  - NUNCA guarda dados: tudo que é /api/ (arquivos, fotos, login) sempre vai para a rede;
 //  - recebe arquivos compartilhados de outros apps (menu Compartilhar do Android).
-const VERSION = "casaos-v4";
+const VERSION = "casaos-v6";
 const SHELL = [
   "./", "index.html", "style.css", "app.js", "config.js", "theme-init.js", "manifest.webmanifest",
   "fonts/bricolage.woff2", "fonts/instrument.woff2",
