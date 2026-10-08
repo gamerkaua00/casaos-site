@@ -34,6 +34,8 @@ const ICONS = {
   move: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 13h6m-2.5-2.5L15 13l-2.5 2.5"/>',
   share: '<circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 10.8l7.6-3.6M8.2 13.2l7.6 3.6"/>',
   search: '<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.2-4.2"/>',
+  finger: '<path d="M5 12a7 7 0 0 1 14 0c0 3-.5 5-1.5 7"/><path d="M8.5 12a3.5 3.5 0 0 1 7 0c0 2.5-.3 4.5-1 6.5"/><path d="M12 12v2c0 2-.4 3.5-1 5"/><path d="M3 8.5A10 10 0 0 1 21 8.5"/>',
+  minus: '<path d="M5 12h14"/>',
   signal: '<path d="M4 19v-3M9 19v-7M14 19V9M19 19V5"/>',
   link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
 };
@@ -57,9 +59,11 @@ const store = {
   del: (k) => { try { localStorage.removeItem(k); } catch {} },
 };
 let toastTimer;
-function toast(msg, bad = false) {
-  const t = $("#toast"); t.textContent = msg; t.className = "toast" + (bad ? " bad" : ""); t.hidden = false;
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), 4500);
+function toast(msg, bad = false, action = null) {
+  const t = $("#toast"), b = $("#toast-act");
+  $("#toast-msg").textContent = msg; t.className = "toast" + (bad ? " bad" : "");
+  if (action) { b.hidden = false; b.textContent = action.label; b.onclick = () => { t.hidden = true; action.fn(); }; } else { b.hidden = true; b.onclick = null; }
+  t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), action ? 9000 : 4500);
 }
 const authHeader = () => { const t = store.get("casaos_token"); return t ? { Authorization: "Bearer " + t } : {}; };
 
@@ -220,7 +224,7 @@ $$(".nav-btn").forEach((b) => (b.onclick = () => setView(b.dataset.view)));
 $("#chip").onclick = () => setView("profile");
 
 /* ---------- arquivos ---------- */
-const MEDIA = ["image", "video", "audio"];
+const MEDIA = ["image", "video", "audio", "pdf", "text"];
 const sel = { on: false, items: new Map() }; // caminho -> item selecionado
 let searchSeq = 0, qTimer = null;
 const syncFab = () => { $("#fab").hidden = sel.on || !(state.view === "files" || state.view === "photos"); };
@@ -250,7 +254,7 @@ function renderCrumbs() {
   const back = $("#back-btn"); back.hidden = parts.length === 0;
   back.onclick = () => loadDir(parts.slice(0, -1).join("/"));
 }
-const KIND_ICON = { folder: "folder", video: "play", audio: "music" };
+const KIND_ICON = { folder: "folder", video: "play", audio: "music", pdf: "file", text: "file" };
 function tick() { const t = document.createElement("span"); t.className = "tick"; t.append(icon("check")); return t; }
 function thumbFor(e) {
   const t = document.createElement("span"); t.className = "thumb";
@@ -356,8 +360,11 @@ async function downloadItems(items) {
 async function trashItems(items) {
   if (!items.length) return;
   if (items.length > 1 && !confirm(`Mover ${items.length} itens para a lixeira? Dá para restaurar por 30 dias.`)) return;
-  try { const r = await api("/api/files/trash", { json: { paths: items.map((i) => i.path) } }); toast(`${r.trashed} item(ns) foram para a lixeira.`); exitSel(); reloadView(); }
-  catch (e) { toast(e.message, true); }
+  try {
+    const r = await api("/api/files/trash", { json: { paths: items.map((i) => i.path) } }); exitSel(); reloadView();
+    toast(`${r.trashed} item(ns) na lixeira.`, false, { label: "Desfazer", fn: async () => {
+      try { await api("/api/trash/restore-many", { json: { ids: r.ids } }); toast("Desfeito."); reloadView(); refreshMe(); } catch (e) { toast(e.message, true); } } });
+  } catch (e) { toast(e.message, true); }
 }
 async function moveItems(items) {
   if (!items.length) return;
@@ -497,10 +504,10 @@ async function putChunk(id, offset, blob, onProgress) {
   }
 }
 async function sendChunked(f, path, onBytes) {
-  const key = ["casaos_up", state.me.username, path, f.name, f.size, f.lastModified].join("|");
+  const key = ["casaos_up", state.me.username, path, f._dir || "", f.name, f.size, f.lastModified].join("|");
   let id = store.get(key), offset = 0, chunk = BIG;
   if (id) { try { const st = await api(`/api/uploads/${id}`); offset = st.offset; chunk = st.chunk_size || chunk; } catch { id = null; store.del(key); } } // retoma de onde parou
-  if (!id) { const r = await api("/api/uploads", { json: { path, name: f.name, size: f.size, mtime: f.lastModified || null } }); id = r.id; chunk = r.chunk_size; store.set(key, id); }
+  if (!id) { const r = await api("/api/uploads", { json: { path, name: f.name, size: f.size, mtime: f.lastModified || null, dir: f._dir || "" } }); id = r.id; chunk = r.chunk_size; store.set(key, id); }
   try {
     while (offset < f.size) {
       if (up.cancel) { const e = new Error("Cancelado"); e.aborted = true; throw e; }
@@ -532,6 +539,7 @@ async function uploadFiles(files, path, after) {
     const flush = async () => {
       if (!batch.length) return;
       const fd = new FormData(); fd.append("mtimes", JSON.stringify(batch.map((f) => f.lastModified || 0)));
+      fd.append("relpaths", JSON.stringify(batch.map((f) => f._dir || "")));
       batch.forEach((f) => fd.append("files", f, f.name));
       const base = done, size = bytes;
       await xhrSend("POST", `/api/files/upload?path=${enc(path)}`, fd, { onProgress: (l) => report(Math.min(l, size)) });
@@ -540,7 +548,8 @@ async function uploadFiles(files, path, after) {
     for (const f of files.filter((f) => f.size < BIG)) { batch.push(f); bytes += f.size; if (bytes >= 24 * 1024 * 1024 || batch.length >= 20) await flush(); }
     await flush();
     for (const f of files.filter((f) => f.size >= BIG)) { const base = done; await sendChunked(f, path, (l) => report(l)); done = base + f.size; count++; report(); }
-    toast(`${files.length} arquivo(s) enviado(s).`);
+    const nd = new Set(files.map((f) => (f._dir || "").split("/")[0]).filter(Boolean)).size;
+    toast(`${files.length} arquivo(s) enviado(s)${nd ? ` em ${nd} pasta(s)` : ""}.`);
   } catch (e) {
     if (e.aborted || up.cancel) toast("Envio cancelado.");
     else if (e.status === 401) showLogin();
@@ -560,18 +569,42 @@ for (const id of ["file-input", "photo-input", "camera-input"]) {
   };
 }
 $("#btn-upload").onclick = () => pick("file-input", "folder");
+$("#btn-upload-folder").onclick = () => pick("folder-input", "folder");
+$("#folder-input").onchange = (e) => {
+  const files = [...e.target.files]; e.target.value = ""; if (!files.length) return;
+  let rel = 0;
+  for (const f of files) { const wp = f.webkitRelativePath || ""; if (wp.includes("/")) { f._dir = wp.slice(0, wp.lastIndexOf("/")); rel++; } }
+  if (!rel) toast("Este navegador não informou as pastas: os arquivos serão enviados soltos.", true);
+  uploadFiles(files, state.path, () => loadDir(state.path));
+};
 $("#btn-photo-upload").onclick = () => pick("photo-input", "photos");
 $("#fab").onclick = () => {
   if (state.view === "photos") openActions($("#fab"), "Adicionar", [
     ["Enviar fotos e vídeos", "photos", () => pick("photo-input", "photos")], ["Tirar foto", "camera", () => pick("camera-input", "photos")]]);
   else openActions($("#fab"), "Adicionar", [
-    ["Enviar arquivos", "upload", () => pick("file-input", "folder")], ["Enviar fotos e vídeos", "photos", () => pick("photo-input", "folder")],
+    ["Enviar arquivos", "upload", () => pick("file-input", "folder")], ["Enviar pasta inteira", "folder", () => pick("folder-input", "folder")], ["Enviar fotos e vídeos", "photos", () => pick("photo-input", "folder")],
     ["Tirar foto", "camera", () => pick("camera-input", "folder")], ["Nova pasta", "plus", newFolder]]);
 };
 const dz = $("#dropzone");
 ["dragenter", "dragover"].forEach((t) => dz.addEventListener(t, (e) => { e.preventDefault(); dz.classList.add("over"); }));
 ["dragleave", "drop"].forEach((t) => dz.addEventListener(t, (e) => { e.preventDefault(); dz.classList.remove("over"); }));
-dz.addEventListener("drop", (e) => uploadFiles(e.dataTransfer.files, state.path, () => loadDir(state.path)));
+async function filesFromEntries(entries) { // arrastar uma pasta: lê todas as subpastas
+  const out = [];
+  const walk = async (entry, dir) => {
+    if (entry.isFile) { const f = await new Promise((res, rej) => entry.file(res, rej)); f._dir = dir; out.push(f); }
+    else if (entry.isDirectory) {
+      const rd = entry.createReader(), sub = dir ? `${dir}/${entry.name}` : entry.name; let batch;
+      do { batch = await new Promise((res, rej) => rd.readEntries(res, rej)); for (const e of batch) await walk(e, sub); } while (batch.length);
+    }
+  };
+  for (const e of entries) await walk(e, "");
+  return out;
+}
+dz.addEventListener("drop", async (e) => {
+  const items = [...(e.dataTransfer.items || [])], entries = items.map((i) => (i.webkitGetAsEntry ? i.webkitGetAsEntry() : null)).filter(Boolean); // precisa ser lido já, antes de qualquer await
+  const files = entries.length ? await filesFromEntries(entries) : [...e.dataTransfer.files];
+  uploadFiles(files, state.path, () => loadDir(state.path));
+});
 
 /* ---------- fotos ---------- */
 const photoIO = new IntersectionObserver((en) => { if (en[0].isIntersecting) loadPhotos(); }, { rootMargin: "800px" });
@@ -615,22 +648,89 @@ function openViewer(items, i) { pv = { items, i: Math.max(0, i) }; showViewer();
 function pvDefaultQuality(it) { return it.lite && isEco() ? "480" : "orig"; }
 function showViewer(keepTime = 0) {
   const it = pv.items[pv.i], body = $("#pv-body"); body.replaceChildren(); $("#pv-prep").hidden = true; const tok = ++pvToken;
-  const el = document.createElement(it.kind === "image" ? "img" : it.kind === "video" ? "video" : "audio");
-  if (it.kind === "image") { el.src = abs(isEco() && it.medium ? it.medium : it.large || it.view); el.alt = it.name; }
-  else {
-    el.controls = true; el.preload = isEco() ? "none" : "metadata"; if (it.kind === "video") el.playsInline = true;
-    if (it.thumb) el.poster = thumbUrl(it);
-    const q = it.kind === "video" && it.lite ? (pvQuality || pvDefaultQuality(it)) : "orig";
-    const play = () => { if (keepTime) el.currentTime = keepTime; if (prefsNow().autoplay && !isEco() || keepTime) el.play().catch(() => {}); };
-    if (q === "orig") { el.src = abs(it.view); el.addEventListener("loadedmetadata", play, { once: true }); }
-    else prepareLite(it, +q, el, tok, play);
+  closePdf();
+  const isDoc = it.kind === "pdf" || it.kind === "text";
+  if (isDoc) {
+    const box = document.createElement("div"); body.append(box);
+    (it.kind === "pdf" ? renderPdf : renderText)(it, box, tok).catch((e) => { if (tok === pvToken) docMessage(box, `Não consegui abrir este arquivo (${e.message}).`, it); });
+  } else {
+    const el = document.createElement(it.kind === "image" ? "img" : it.kind === "video" ? "video" : "audio");
+    if (it.kind === "image") { el.src = abs(isEco() && it.medium ? it.medium : it.large || it.view); el.alt = it.name; }
+    else {
+      el.controls = true; el.preload = isEco() ? "none" : "metadata"; if (it.kind === "video") el.playsInline = true;
+      if (it.thumb) el.poster = thumbUrl(it);
+      const q = it.kind === "video" && it.lite ? (pvQuality || pvDefaultQuality(it)) : "orig";
+      const play = () => { if (keepTime) el.currentTime = keepTime; if (prefsNow().autoplay && !isEco() || keepTime) el.play().catch(() => {}); };
+      if (q === "orig") { el.src = abs(it.view); el.addEventListener("loadedmetadata", play, { once: true }); }
+      else prepareLite(it, +q, el, tok, play);
+    }
+    body.append(el);
   }
-  body.append(el);
   $("#pv-name").textContent = it.name; $("#pv-count").textContent = pv.items.length > 1 ? `${pv.i + 1} / ${pv.items.length}` : "";
   const dl = $("#pv-download"); dl.href = abs(it.dl); dl.download = it.name;
   const qb = $("#pv-quality"); qb.hidden = !(it.kind === "video" && it.lite);
   if (!qb.hidden) $("#pv-q-label").textContent = Q_LABEL[pvQuality || pvDefaultQuality(it)];
+  $("#pv-zoom-in").hidden = $("#pv-zoom-out").hidden = it.kind !== "pdf";
   $("#pv-prev").hidden = pv.i === 0; $("#pv-next").hidden = pv.i === pv.items.length - 1;
+}
+
+/* PDF (leitor pdf.js, carregado só quando abre um PDF) e texto simples */
+let pdfjsLib = null, pdfState = null, pdfZoom = 1;
+const docMessage = (box, msg, it) => {
+  box.className = "pv-doc"; box.replaceChildren(); const m = document.createElement("div"); m.className = "doc-msg"; m.textContent = msg;
+  if (it) { const a = document.createElement("a"); a.className = "btn"; a.href = abs(it.dl); a.download = it.name; a.textContent = "Baixar o arquivo"; m.append(a); }
+  box.append(m);
+};
+async function loadPdfjs() {
+  if (!pdfjsLib) {
+    pdfjsLib = await import("./vendor/pdfjs/pdf.min.mjs");
+    pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("vendor/pdfjs/pdf.worker.min.mjs", document.baseURI).href;
+  }
+  return pdfjsLib;
+}
+function closePdf() { if (pdfState) { try { pdfState.io.disconnect(); pdfState.doc.destroy(); } catch {} pdfState = null; } }
+async function renderPdf(it, box, tok) {
+  pdfZoom = 1; docMessage(box, "Carregando o PDF…");
+  if (it.size > 80 * 1024 * 1024) return docMessage(box, "Este PDF é muito grande para abrir aqui. Baixe para ler.", it);
+  const [res, lib] = await Promise.all([fetch(abs(it.dl)), loadPdfjs()]);
+  if (!res.ok) throw new Error(`erro ${res.status}`);
+  const data = new Uint8Array(await res.arrayBuffer()); if (tok !== pvToken) return;
+  const doc = await lib.getDocument({ data, isEvalSupported: false }).promise; if (tok !== pvToken) { doc.destroy(); return; }
+  const first = await doc.getPage(1), v1 = first.getViewport({ scale: 1 }), ratio = v1.height / v1.width;
+  box.className = "pv-doc"; box.replaceChildren();
+  let gen = 0;
+  const cssWidth = () => Math.max(260, Math.min(box.clientWidth - 16, 920) * pdfZoom); // em tela grande a página não passa de ~920 px
+  const io = new IntersectionObserver((en) => en.forEach((x) => x.isIntersecting && draw(x.target)), { root: box, rootMargin: "700px 0px" });
+  pdfState = { doc, io, redraw: () => { gen++; $$(".pdf-page", box).forEach((c) => { c.style.width = cssWidth() + "px"; c.style.height = cssWidth() * ratio + "px"; io.unobserve(c); io.observe(c); }); } };
+  async function draw(c) {
+    if (c._gen === gen) return; c._gen = gen; const my = gen;
+    const page = await doc.getPage(+c.dataset.page); if (my !== gen || tok !== pvToken) return;
+    const w = cssWidth(), vp0 = page.getViewport({ scale: 1 }), dpr = Math.min(window.devicePixelRatio || 1, isEco() ? 1.5 : 2.5), vp = page.getViewport({ scale: (w / vp0.width) * dpr });
+    c.width = vp.width; c.height = vp.height; c.style.width = w + "px"; c.style.height = vp.height / dpr + "px";
+    await page.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise.catch(() => {});
+  }
+  for (let i = 1; i <= doc.numPages; i++) {
+    const c = document.createElement("canvas"); c.className = "pdf-page"; c.dataset.page = i; c.style.width = cssWidth() + "px"; c.style.height = cssWidth() * ratio + "px"; box.append(c); io.observe(c);
+  }
+  const count = $("#pv-count"), pages = $$(".pdf-page", box);
+  const upd = () => { const mid = box.getBoundingClientRect().top + box.clientHeight / 3; let cur = 1; for (const c of pages) { if (c.getBoundingClientRect().top <= mid) cur = +c.dataset.page; else break; } count.textContent = `Página ${cur} de ${doc.numPages}`; };
+  let raf = 0; box.addEventListener("scroll", () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(upd); }, { passive: true }); upd();
+}
+function zoomPdf(f) { if (!pdfState) return; pdfZoom = Math.min(4, Math.max(0.5, pdfZoom * f)); pdfState.redraw(); }
+$("#pv-zoom-in").onclick = () => zoomPdf(1.25);
+$("#pv-zoom-out").onclick = () => zoomPdf(0.8);
+async function renderText(it, box, tok) {
+  box.className = "pv-doc"; box.replaceChildren(); const pre = document.createElement("pre"); pre.className = "pv-text"; pre.textContent = "Carregando…"; box.append(pre);
+  const res = await fetch(abs(it.dl)); if (!res.ok) throw new Error(`erro ${res.status}`);
+  const MAX = 1_000_000; let text, cut = false;
+  if (res.body && res.body.getReader) {
+    const rd = res.body.getReader(), parts = []; let got = 0;
+    for (;;) { const { done, value } = await rd.read(); if (done) break; parts.push(value); got += value.length; if (got >= MAX) { cut = true; rd.cancel(); break; } }
+    const all = new Uint8Array(got); let o = 0; for (const p of parts) { all.set(p, o); o += p.length; }
+    text = new TextDecoder("utf-8").decode(all);
+  } else { text = await res.text(); if (text.length > MAX) { text = text.slice(0, MAX); cut = true; } }
+  if (tok !== pvToken) return;
+  pre.textContent = text + (cut ? "\n\n… (mostrando só o começo; baixe o arquivo para ver tudo)" : "");
 }
 async function prepareLite(it, height, el, tok, onReady) { // pede a versão leve e espera ficar pronta (mostra o andamento)
   const prep = $("#pv-prep");
@@ -656,7 +756,7 @@ $("#pv-quality").onclick = () => {
 $("#pv-share").onclick = () => { const it = pv.items[pv.i]; if (it) shareItem(it); };
 function step(d) { const n = pv.i + d; if (n >= 0 && n < pv.items.length) { pv.i = n; showViewer(); } }
 $("#pv-prev").onclick = () => step(-1); $("#pv-next").onclick = () => step(1); $("#pv-close").onclick = () => $("#preview").close();
-$("#preview").addEventListener("close", () => { pvToken++; $("#pv-prep").hidden = true; $("#pv-body").replaceChildren(); });
+$("#preview").addEventListener("close", () => { pvToken++; closePdf(); $("#pv-prep").hidden = true; $("#pv-body").replaceChildren(); });
 $("#preview").addEventListener("keydown", (e) => { if (e.key === "ArrowLeft") step(-1); if (e.key === "ArrowRight") step(1); });
 (() => { let x0 = null; const el = $("#preview");
   el.addEventListener("touchstart", (e) => { x0 = e.touches[0].clientX; }, { passive: true });
@@ -719,7 +819,7 @@ function renderProfile() {
   const eco = isEco(), mode = s.data_saver || "auto";
   $("#data-status").textContent = mode === "auto" && !conn() ? "Seu navegador não informa o tipo de conexão (comum no iPhone). Use Sempre ligada quando estiver no 4G."
     : `Agora: economia ${eco ? "LIGADA" : "desligada"}${mode === "auto" ? (eco ? " (conexão de celular detectada)" : " (Wi-Fi ou conexão rápida)") : ""}.`;
-  renderThemes(); loadShares();
+  renderThemes(); loadShares(); renderPasskeys(); renderNotif();
   fetch(API + "/api/health").then((r) => r.json()).then((h) => { $("#about-ver").textContent = h.version ? `v${h.version}` : ""; }).catch(() => {});
 }
 const THEMES = [
@@ -774,6 +874,7 @@ const ACTION_LABEL = {
   excluido_definitivamente: "Excluiu de vez", lixeira_esvaziada: "Esvaziou a lixeira", sessoes_encerradas: "Saiu dos outros aparelhos",
   movido: "Moveu arquivos", link_criado: "Criou um link", link_removido: "Cancelou um link", link_aberto: "Abriram um link",
   link_baixado: "Baixaram por um link", datas_corrigidas: "Corrigiu as datas das fotos",
+  passkey_criada: "Cadastrou biometria", passkey_removida: "Removeu biometria", login_biometria: "Entrou com biometria",
   video_leve_auto: "Vídeo leve automático", indice_reconstruido: "Reconstruiu o índice", cache_limpo: "Limpou o cache",
   migracao_iniciada: "Migração iniciada", migracao_concluida: "Migração concluída", migracao_cancelada: "Migração cancelada", migracao_falhou: "Migração falhou",
 };
@@ -930,6 +1031,99 @@ if ("serviceWorker" in navigator) {
     reloading = true; location.reload();
   });
 }
+
+/* ---------- entrar com biometria (passkey) ---------- */
+const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const unb64u = (t) => { t = t.replace(/-/g, "+").replace(/_/g, "/"); t += "=".repeat((4 - (t.length % 4)) % 4); return Uint8Array.from(atob(t), (c) => c.charCodeAt(0)).buffer; };
+const hasPasskeys = () => !!(window.PublicKeyCredential && navigator.credentials);
+const deviceName = () => { const u = navigator.userAgent; return /iPhone/.test(u) ? "iPhone" : /iPad/.test(u) ? "iPad" : /Android/.test(u) ? "Celular Android" : /Windows/.test(u) ? "Computador Windows" : /Mac/.test(u) ? "Mac" : /Linux/.test(u) ? "Linux" : "Este aparelho"; };
+$("#btn-passkey").hidden = !hasPasskeys();
+$("#btn-passkey").onclick = async () => {
+  $("#login-error").textContent = ""; const btn = $("#btn-passkey"); btn.disabled = true;
+  try {
+    const { challenge_id, options } = await api("/api/auth/passkeys/login/options", { method: "POST" });
+    options.challenge = unb64u(options.challenge);
+    if (options.allowCredentials) options.allowCredentials = options.allowCredentials.map((c) => ({ ...c, id: unb64u(c.id) }));
+    let cred;
+    try { cred = await navigator.credentials.get({ publicKey: options }); }
+    catch (e) { throw new Error(e.name === "NotAllowedError" ? "Cancelado, ou ainda não há biometria cadastrada neste aparelho. Entre com a senha e ative em Perfil." : e.message); }
+    const r = cred.response, credential = { id: cred.id, rawId: b64u(cred.rawId), type: cred.type, clientExtensionResults: cred.getClientExtensionResults(),
+      response: { authenticatorData: b64u(r.authenticatorData), clientDataJSON: b64u(r.clientDataJSON), signature: b64u(r.signature) } };
+    if (r.userHandle) credential.response.userHandle = b64u(r.userHandle);
+    if (cred.authenticatorAttachment) credential.authenticatorAttachment = cred.authenticatorAttachment;
+    const out = await api("/api/auth/passkeys/login/verify", { json: { challenge_id, credential } });
+    store.set("casaos_token", out.token); setMe(out.user); enterApp();
+  } catch (e) { $("#login-error").textContent = e.message; }
+  btn.disabled = false;
+};
+async function renderPasskeys() {
+  const box = $("#p-passkeys"), note = $("#pk-note"), add = $("#btn-add-passkey");
+  add.hidden = !hasPasskeys();
+  note.textContent = hasPasskeys() ? "Entre só com a digital, o rosto ou o PIN do aparelho, sem digitar a senha. Nada biométrico sai do seu aparelho. Cada aparelho e cada endereço do site precisam do próprio cadastro." : "Este navegador não suporta entrar com biometria.";
+  let list = []; try { list = await api("/api/auth/passkeys"); } catch { return; }
+  box.replaceChildren();
+  for (const k of list) {
+    const row = document.createElement("div"); row.className = "pk-item";
+    const t = document.createElement("span"); t.className = "txt"; const nm = document.createElement("b"); nm.textContent = k.name;
+    const sub = document.createElement("span"); sub.className = "sub"; sub.textContent = `${k.rp_id} · criada em ${fmtWhen(k.created_at)}${k.last_used ? ` · usada em ${fmtWhen(k.last_used)}` : ""}`; t.append(nm, sub);
+    const del = document.createElement("button"); del.className = "danger"; del.textContent = "Remover";
+    del.onclick = async () => { if (!confirm(`Remover a biometria “${k.name}”?`)) return; try { await api(`/api/auth/passkeys/${k.id}`, { method: "DELETE" }); renderPasskeys(); } catch (e) { toast(e.message, true); } };
+    row.append(t, del); box.append(row);
+  }
+}
+$("#btn-add-passkey").onclick = async () => {
+  const name = await ask("Nome deste aparelho", deviceName()); if (!name) return;
+  try {
+    const { challenge_id, options } = await api("/api/auth/passkeys/register/options", { method: "POST" });
+    options.challenge = unb64u(options.challenge); options.user.id = unb64u(options.user.id);
+    if (options.excludeCredentials) options.excludeCredentials = options.excludeCredentials.map((c) => ({ ...c, id: unb64u(c.id) }));
+    let cred;
+    try { cred = await navigator.credentials.create({ publicKey: options }); }
+    catch (e) { if (e.name === "NotAllowedError") return toast("Cancelado.", true); if (e.name === "InvalidStateError") return toast("Este aparelho já está cadastrado.", true); throw e; }
+    const r = cred.response, credential = { id: cred.id, rawId: b64u(cred.rawId), type: cred.type, clientExtensionResults: cred.getClientExtensionResults(),
+      response: { attestationObject: b64u(r.attestationObject), clientDataJSON: b64u(r.clientDataJSON), transports: r.getTransports ? r.getTransports() : [] } };
+    if (cred.authenticatorAttachment) credential.authenticatorAttachment = cred.authenticatorAttachment;
+    await api(`/api/auth/passkeys/register/verify?challenge_id=${enc(challenge_id)}`, { json: { credential, name } });
+    toast("Biometria cadastrada. Da próxima vez, é só tocar em Entrar com biometria."); renderPasskeys();
+  } catch (e) { toast(e.message, true); }
+};
+
+/* ---------- notificações no celular (Web Push) ---------- */
+const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+async function currentSub() { try { return await (await navigator.serviceWorker.ready).pushManager.getSubscription(); } catch { return null; } }
+async function renderNotif() {
+  const st = $("#notif-status"), tg = $("#notif-toggle"), ts = $("#notif-test"), s = state.me?.settings || {};
+  $("#n-links").checked = s.notify_links !== false; $("#n-video").checked = s.notify_video !== false; $("#n-login").checked = s.notify_login !== false; $("#n-admin").checked = s.notify_admin !== false;
+  $("#n-admin-row").hidden = !state.me?.is_admin;
+  if (!pushSupported()) {
+    tg.hidden = ts.hidden = true;
+    st.textContent = isIOS() && !isStandalone() ? "No iPhone, primeiro instale o app: Safari → Compartilhar → Adicionar à Tela de Início. Depois abra o CasaOS por lá e ative aqui (precisa do iOS 16.4 ou mais novo)." : "Este navegador não suporta notificações.";
+    return;
+  }
+  const sub = await currentSub();
+  tg.hidden = false; ts.hidden = !sub; tg.disabled = false;
+  if (Notification.permission === "denied") { st.textContent = "As notificações estão bloqueadas para este site no navegador. Libere nas configurações do site e volte aqui."; tg.hidden = true; ts.hidden = true; return; }
+  st.textContent = sub ? "Ativadas neste aparelho." : "Desativadas neste aparelho. Você pode escolher abaixo o que quer receber.";
+  tg.textContent = sub ? "Desativar neste aparelho" : "Ativar neste aparelho"; tg.className = sub ? "" : "primary";
+}
+$("#notif-toggle").onclick = async () => {
+  const tg = $("#notif-toggle"); tg.disabled = true;
+  try {
+    const sub = await currentSub();
+    if (sub) { await api("/api/push/unsubscribe", { json: { endpoint: sub.endpoint } }); await sub.unsubscribe(); toast("Notificações desativadas neste aparelho."); }
+    else {
+      if ((await Notification.requestPermission()) !== "granted") throw new Error("Sem permissão para notificar. Libere nas configurações do navegador.");
+      const reg = await navigator.serviceWorker.ready, k = await api("/api/push/key");
+      if (!k.available) throw new Error("O servidor ainda não tem a biblioteca de notificações. Rode instalar.bat no PC.");
+      const ns = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: unb64u(k.public_key) }), j = ns.toJSON();
+      await api("/api/push/subscribe", { json: { endpoint: j.endpoint, keys: j.keys, device: deviceName() } });
+      toast("Notificações ativadas neste aparelho.");
+    }
+  } catch (e) { toast(e.message, true); }
+  renderNotif();
+};
+$("#notif-test").onclick = async () => { try { const r = await api("/api/push/test", { method: "POST" }); toast(r.sent ? "Teste enviado. A notificação deve chegar em instantes." : "Nenhum aparelho recebeu. Desative e ative de novo.", !r.sent); } catch (e) { toast(e.message, true); } };
+for (const [id, key] of [["n-links", "notify_links"], ["n-video", "notify_video"], ["n-login", "notify_login"], ["n-admin", "notify_admin"]]) $("#" + id).onchange = (e) => saveSetting(key, e.target.checked);
 
 /* ---------- desempenho, vídeos leves e cache ---------- */
 function renderPerf(p) {

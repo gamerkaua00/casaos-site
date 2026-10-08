@@ -3,7 +3,7 @@
 //  - guarda a "casca" do app (HTML, CSS, JS, fontes, ícones) para abrir rápido e funcionar sem rede;
 //  - NUNCA guarda dados: tudo que é /api/ (arquivos, fotos, login) sempre vai para a rede;
 //  - recebe arquivos compartilhados de outros apps (menu Compartilhar do Android).
-const VERSION = "casaos-v6";
+const VERSION = "casaos-v7";
 const SHELL = [
   "./", "index.html", "style.css", "app.js", "config.js", "theme-init.js", "manifest.webmanifest",
   "fonts/bricolage.woff2", "fonts/instrument.woff2",
@@ -57,5 +57,30 @@ self.addEventListener("fetch", (e) => {
     const hit = await cache.match(req, { ignoreSearch: true });
     const net = fetch(req).then((r) => { if (r.ok) cache.put(req, r.clone()); return r; }).catch(() => hit);
     return hit || net;
+  })());
+});
+
+// ---- notificações (Web Push)
+self.addEventListener("push", (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch { d = { title: "CasaOS", body: e.data ? e.data.text() : "" }; }
+  e.waitUntil((async () => {
+    if (d.onlyIfHidden) { // se o app está aberto na tela, não precisa avisar
+      const cs = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      if (cs.some((c) => c.visibilityState === "visible")) return;
+    }
+    await self.registration.showNotification(d.title || "CasaOS", {
+      body: d.body || "", icon: "icon/icon-192.png", badge: "icon/icon-192.png", tag: d.tag || undefined, data: { url: d.url || "./" },
+    });
+  })());
+});
+
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const url = new URL((e.notification.data && e.notification.data.url) || "./", self.registration.scope).href;
+  e.waitUntil((async () => {
+    const cs = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    const c = cs.find((x) => x.url.startsWith(self.registration.scope));
+    if (c) { await c.focus(); if (c.navigate) await c.navigate(url).catch(() => {}); } else await self.clients.openWindow(url);
   })());
 });

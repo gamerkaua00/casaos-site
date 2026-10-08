@@ -25,6 +25,18 @@ BIBLIOTECAS PYTHON (instaladas pelo instalar.bat a partir do PyPI; não são red
   computador. Se você algum dia empacotar o CasaOS com o Python e as bibliotecas dentro (instalador,
   executável, imagem), revise essa licença antes de distribuir.
 
+- webauthn (py_webauthn) 3.0 ... BSD-3-Clause   (entrar com biometria)
+- cryptography 50 ........... Apache-2.0 OU BSD-3-Clause
+- cbor2 6.1 ................. MIT
+- pyOpenSSL 26 .............. Apache-2.0
+- pywebpush 2.5 ............. MPL-2.0   (notificações; usado sem modificações)
+- py-vapid 1.9 .............. MPL-2.0
+- http-ece 1.2 .............. MIT
+- requests 2.33 ............. Apache-2.0
+
+LEITOR DE PDF (incluído na pasta vendor/pdfjs, com a licença ao lado)
+- pdf.js (pdfjs-dist 6.4, build "legacy") - Mozilla Foundation e colaboradores - Apache-2.0 (LICENSE-pdfjs.txt)
+
 PROGRAMA EXTERNO OPCIONAL
 - FFmpeg - instalado separadamente pelo usuário (ex.: winget install Gyan.FFmpeg). Não é distribuído
   com o CasaOS. Licença LGPL/GPL conforme a versão instalada (https://ffmpeg.org/legal.html).
